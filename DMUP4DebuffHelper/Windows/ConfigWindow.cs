@@ -127,6 +127,18 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetShowStackSpreadTiming(showStackSpreadTiming);
         }
 
+        var showP4RealityLabels = configuration.ShowP4RealityLabels;
+        if (ImGui.Checkbox("Show Real/Fake in P4 callouts", ref showP4RealityLabels))
+        {
+            plugin.SetShowP4RealityLabels(showP4RealityLabels);
+        }
+
+        var useMotionStillnessLabels = configuration.UseMotionStillnessLabels;
+        if (ImGui.Checkbox("Use Motion/Stillness for Acceleration Bomb", ref useMotionStillnessLabels))
+        {
+            plugin.SetUseMotionStillnessLabels(useMotionStillnessLabels);
+        }
+
         ImGui.BeginDisabled(!configuration.EnableFloodTracking);
         DrawFloodDestinationNamingSetting();
         ImGui.EndDisabled();

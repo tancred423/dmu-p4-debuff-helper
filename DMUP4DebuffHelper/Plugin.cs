@@ -345,6 +345,18 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetShowP4RealityLabels(bool enabled)
+    {
+        Configuration.ShowP4RealityLabels = enabled;
+        SaveConfiguration();
+    }
+
+    public void SetUseMotionStillnessLabels(bool enabled)
+    {
+        Configuration.UseMotionStillnessLabels = enabled;
+        SaveConfiguration();
+    }
+
     public void SetHelperCollapsed(bool collapsed)
     {
         Configuration.HelperCollapsed = collapsed;
@@ -390,7 +402,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 6)
+        if (Configuration.Version >= 7)
         {
             return;
         }
@@ -409,8 +421,14 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.FloodDestinationNaming = FloodDestinationNaming.GameNames;
         }
 
-        Configuration.ShowStackSpreadTiming = false;
-        Configuration.Version = 6;
+        if (Configuration.Version < 6)
+        {
+            Configuration.ShowStackSpreadTiming = false;
+        }
+
+        Configuration.ShowP4RealityLabels = true;
+        Configuration.UseMotionStillnessLabels = false;
+        Configuration.Version = 7;
         SaveConfiguration();
     }
 

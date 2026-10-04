@@ -397,7 +397,29 @@ public sealed class HelperWindow : Window, IDisposable
 
     private void DrawPreviewView()
     {
-        if (selectedPreviewMode is not (DmuHelperDisplayMode.P3BlackHole or DmuHelperDisplayMode.P4Debuffs))
+        var p3Enabled = plugin.Configuration.EnableP3Tracking;
+        var p4Enabled = plugin.Configuration.EnableP4Tracking;
+        if (!p3Enabled && !p4Enabled)
+        {
+            DrawHeader("DMU Helper Preview", 0, isPreview: true);
+            if (!plugin.Configuration.HelperCollapsed)
+            {
+                ImGui.Spacing();
+                ImGui.TextDisabled("P3 and P4 tracking are disabled.");
+            }
+
+            return;
+        }
+
+        if (!p3Enabled)
+        {
+            selectedPreviewMode = DmuHelperDisplayMode.P4Debuffs;
+        }
+        else if (!p4Enabled)
+        {
+            selectedPreviewMode = DmuHelperDisplayMode.P3BlackHole;
+        }
+        else if (selectedPreviewMode is not (DmuHelperDisplayMode.P3BlackHole or DmuHelperDisplayMode.P4Debuffs))
         {
             selectedPreviewMode = DmuHelperDisplayMode.P4Debuffs;
         }
@@ -419,8 +441,11 @@ public sealed class HelperWindow : Window, IDisposable
         }
 
         ImGui.Spacing();
-        DrawPreviewModeSelector();
-        ImGui.Separator();
+        if (p3Enabled && p4Enabled)
+        {
+            DrawPreviewModeSelector();
+            ImGui.Separator();
+        }
 
         if (selectedPreviewMode == DmuHelperDisplayMode.P3BlackHole)
         {
@@ -663,13 +688,13 @@ public sealed class HelperWindow : Window, IDisposable
         {
             (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 6.8f, "Preview Player", 0, WoundColor.White),
             (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 7.4f, "Preview Player", 0, WoundColor.White),
-            (5545, RealityState.Real, 1120, 10.4f, "Preview Player", 0, WoundColor.None),
+            (5546, RealityState.Real, 1120, 10.4f, "Preview Player", 0, WoundColor.None),
             (5544, RealityState.Fake, 1119, 62.0f, "Preview Player", 0, WoundColor.None),
             (5548, RealityState.Real, 1122, 18.0f, "Preview Player", 0, WoundColor.None),
             (5547, RealityState.Fake, 1121, 23.2f, "Preview Player", 0, WoundColor.None),
         };
 
-        return BuildPreviewAssignments(previews);
+        return GetOrderedAssignments(BuildPreviewAssignments(previews));
     }
 
     private List<P4DebuffAssignment> GetPreviewGazeAssignments()
@@ -694,6 +719,11 @@ public sealed class HelperWindow : Window, IDisposable
         foreach (var preview in previews)
         {
             if (!Plugin.WatchedStatuses.TryGetValue(preview.StatusId, out var rule))
+            {
+                continue;
+            }
+
+            if (rule.Group == P4MechanicGroup.Flood && !plugin.Configuration.EnableFloodTracking)
             {
                 continue;
             }
@@ -830,7 +860,7 @@ public sealed class HelperWindow : Window, IDisposable
         ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
     }
 
-    private static void DrawGazeSection(string label, IReadOnlyList<GazeDisplayAssignment> assignments, string idSuffix)
+    private void DrawGazeSection(string label, IReadOnlyList<GazeDisplayAssignment> assignments, string idSuffix)
     {
         ImGui.TextColored(GoldColor, label);
         var panelStart = ImGui.GetCursorScreenPos();
@@ -860,7 +890,7 @@ public sealed class HelperWindow : Window, IDisposable
         return HelperPadding * 2.0f + rows * rowHeight + MathF.Max(0, rows - 1) * style.ItemSpacing.Y;
     }
 
-    private static void DrawGazeRows(IReadOnlyList<GazeDisplayAssignment> assignments, float availableWidth, string idSuffix)
+    private void DrawGazeRows(IReadOnlyList<GazeDisplayAssignment> assignments, float availableWidth, string idSuffix)
     {
         if (assignments.Count == 0)
         {
@@ -931,11 +961,9 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static void DrawGazeCallColumn(P4DebuffAssignment assignment, string tooltip)
+    private void DrawGazeCallColumn(P4DebuffAssignment assignment, string tooltip)
     {
-        var call = assignment.Reality == RealityState.Unknown
-            ? "Unknown"
-            : $"{FormatReality(assignment.Reality)}: {GetResolutionLabel(assignment)}";
+        var call = FormatResolvedCall(assignment);
         ImGui.TextColored(GetRealityColor(assignment.Reality), call);
         if (ImGui.IsItemHovered())
         {
@@ -1138,7 +1166,7 @@ public sealed class HelperWindow : Window, IDisposable
         return $"{assignment.Entry.MemberName}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{FormatAssignmentInstruction(assignment)}";
     }
 
-    private static string FormatGazeTooltip(GazeDisplayAssignment displayAssignment, int index, int assignmentCount)
+    private string FormatGazeTooltip(GazeDisplayAssignment displayAssignment, int index, int assignmentCount)
     {
         var assignment = displayAssignment.Representative;
         var timerText = FormatRemainingTime(assignment.Entry.RemainingTime);
@@ -1148,7 +1176,7 @@ public sealed class HelperWindow : Window, IDisposable
             : $"Players: {string.Join(", ", displayAssignment.Assignments.Select(assignment => assignment.Entry.MemberName))}";
         var realityLine = assignment.Reality == RealityState.Unknown
             ? "Tell not captured."
-            : $"{FormatReality(assignment.Reality)}: {GetResolutionLabel(assignment)}";
+            : FormatResolvedCall(assignment);
         return $"{timingLabel}\n{playerLine}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{assignment.Instruction}";
     }
 
@@ -1194,12 +1222,20 @@ public sealed class HelperWindow : Window, IDisposable
             };
         }
 
-        return assignment.Reality switch
+        return FormatResolvedCall(assignment);
+    }
+
+    private string FormatResolvedCall(P4DebuffAssignment assignment)
+    {
+        if (assignment.Reality == RealityState.Unknown)
         {
-            RealityState.Real => $"Real: {GetResolutionLabel(assignment)}{GetStackSpreadTimingSuffix(assignment)}",
-            RealityState.Fake => $"Fake: {GetResolutionLabel(assignment)}{GetStackSpreadTimingSuffix(assignment)}",
-            _ => "Unknown",
-        };
+            return "Unknown";
+        }
+
+        var resolution = $"{GetResolutionLabel(assignment)}{GetStackSpreadTimingSuffix(assignment)}";
+        return plugin.Configuration.ShowP4RealityLabels
+            ? $"{FormatReality(assignment.Reality)}: {resolution}"
+            : resolution;
     }
 
     private string GetStackSpreadTimingSuffix(P4DebuffAssignment assignment)
@@ -1224,14 +1260,16 @@ public sealed class HelperWindow : Window, IDisposable
             : assignment.Instruction;
     }
 
-    private static string GetResolutionLabel(P4DebuffAssignment assignment)
+    private string GetResolutionLabel(P4DebuffAssignment assignment)
     {
         return assignment.Rule.Id switch
         {
             5545 => assignment.Reality == RealityState.Real ? "Stack" : "Spread",
             5544 => assignment.Reality == RealityState.Real ? "Spread" : "Stack",
             5543 => assignment.Reality == RealityState.Real ? "Look away" : "Look toward",
-            5546 => assignment.Reality == RealityState.Real ? "Stop" : "Move",
+            5546 => assignment.Reality == RealityState.Real
+                ? plugin.Configuration.UseMotionStillnessLabels ? "Stillness" : "Stop"
+                : plugin.Configuration.UseMotionStillnessLabels ? "Motion" : "Move",
             5548 => assignment.Reality == RealityState.Real ? "Donut" : "Point-blank",
             5547 => assignment.Reality == RealityState.Real ? "Point-blank" : "Donut",
             _ => FormatReality(assignment.Reality),

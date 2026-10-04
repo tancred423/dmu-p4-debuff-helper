@@ -17,6 +17,8 @@ It is DMU-only. The helper window pops into the relevant compact view: P3 Black 
 - Toggle Flood debuff tracking without disabling other P4 mechanics.
 - Use game-name Black/White Flood terminology or descriptive Blue/Purple calls, including Blue Vuln and Purple Vuln Wound labels.
 - Optionally show `(Short)` or `(Long)` on Stack/Spread calls. A debuff applied at 55 seconds or less is Short; above 55 seconds is Long.
+- Optionally hide Real/Fake prefixes from P4 callouts.
+- Optionally use Motion/Stillness instead of Move/Stop for Acceleration Bomb callouts.
 
 ## Commands
 
