@@ -1,0 +1,31 @@
+[
+  {
+    "Author": "nainaiowo, Tancred",
+    "Name": "DMU Helper",
+    "InternalName": "DMUP4DebuffHelper",
+    "Description": "Configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
+    "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
+    "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "Tags": [
+      "dmu",
+      "p3",
+      "p4",
+      "blackhole",
+      "debuff",
+      "ultimate"
+    ],
+    "CategoryTags": [
+      "UI",
+      "utility"
+    ],
+    "IsTestingExclusive": false,
+    "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
+    "AcceptsFeedback": true,
+    "DownloadLinkInstall": "https://github.com/tancred423/dmu-p4-debuff-helper/releases/download/v0.1.0.19/latest.zip",
+    "AssemblyVersion": "0.1.0.19",
+    "DownloadLinkUpdate": "https://github.com/tancred423/dmu-p4-debuff-helper/releases/download/v0.1.0.19/latest.zip",
+    "DownloadCount": 0
+  }
+]

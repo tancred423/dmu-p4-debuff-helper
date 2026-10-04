@@ -4,9 +4,8 @@
 
 - Plugin name: `DMU Helper`
 - Internal name: `DMUP4DebuffHelper`
-- Repo: `Nainaiowo/dmu-p4-debuff-helper`
-- Puni plugin ID: `162`
-- Dalamud feed URL: `https://puni.sh/api/repository/nainai`
+- Repo: `tancred423/dmu-p4-debuff-helper`
+- Dalamud feed URL: `https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/repo.json`
 - Settings commands: `/dmu`, `/dmuh`, `/dmuhelper`
 - DMU territory ID: `1363`
 

@@ -11,6 +11,13 @@ It is DMU-only. The helper window pops into the relevant compact view: P3 Black 
 - Chaos: Dynamic Fluid, Entropy.
 - Flood: Black Wound, White Wound, Allagan Field, Beyond Death.
 
+## Settings
+
+- Enable or disable P3 and P4 tracking independently.
+- Toggle Flood debuff tracking without disabling other P4 mechanics.
+- Use game-name Black/White or visual-color Blue/Purple Flood destination calls.
+- Optionally show `(Short)` or `(Long)` on Stack/Spread calls. A debuff applied at 55 seconds or less is Short; above 55 seconds is Long.
+
 ## Commands
 
 Open settings:
@@ -23,10 +30,10 @@ Open settings:
 
 ## Dalamud Repository
 
-Add this custom plugin repository URL in Dalamud:
+In Dalamud's Plugin Installer settings, add this URL under Custom Plugin Repositories:
 
 ```text
-https://puni.sh/api/repository/nainai
+https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/repo.json
 ```
 
-Then install `DMU Helper` from Dalamud's plugin installer.
+Refresh the plugin list, then install `DMU Helper` from Dalamud's plugin installer.

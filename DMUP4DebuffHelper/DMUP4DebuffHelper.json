@@ -1,14 +1,15 @@
 {
-  "Author": "Nainaiowo",
+  "Author": "nainaiowo, Tancred",
   "Name": "DMU Helper",
   "InternalName": "DMUP4DebuffHelper",
-  "DownloadCount": 513,
+  "DownloadCount": 0,
   "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
-  "Description": "Shows a compact DMU helper window for P3 Black Hole assignments and P4 debuff guidance.",
-  "Changelog": "Updated /dmu, /dmuh, and /dmuhelper to open settings and removed the legacy P3 commands.",
-  "RepoUrl": "https://github.com/Nainaiowo/dmu-p4-debuff-helper",
-  "IconUrl": "https://raw.githubusercontent.com/Nainaiowo/dmu-p4-debuff-helper/main/assets/icon.png",
+  "Description": "Shows configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
+  "Changelog": "Added P3/P4 and Flood tracking toggles, Black/White or Blue/Purple Flood calls, and optional Short/Long Stack/Spread labels.",
+  "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
+  "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
   "ApplicableVersion": "any",
+  "DalamudApiLevel": 15,
   "Tags": [
     "dmu",
     "p3",
@@ -16,5 +17,11 @@
     "blackhole",
     "debuff",
     "ultimate"
-  ]
+  ],
+  "CategoryTags": [
+    "UI",
+    "utility"
+  ],
+  "IsTestingExclusive": false,
+  "AcceptsFeedback": true
 }
