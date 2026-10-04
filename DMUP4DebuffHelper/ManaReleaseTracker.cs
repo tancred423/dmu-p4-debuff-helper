@@ -61,7 +61,14 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     }
 
     public ManaReleaseDisplayState? DisplayState => armed || releaseActive
-        ? new ManaReleaseDisplayState(armed, lightningStored, iceStored, releaseActive, safeZone)
+        ? new ManaReleaseDisplayState(
+            armed,
+            lightningStored,
+            iceStored,
+            releaseResolved ? (releaseLightningFake ? RealityState.Fake : RealityState.Real) : RealityState.Unknown,
+            releaseResolved ? (releaseIceFake ? RealityState.Fake : RealityState.Real) : RealityState.Unknown,
+            releaseActive,
+            safeZone)
         : null;
 
     public void Reconcile(bool shouldRun)

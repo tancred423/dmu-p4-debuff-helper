@@ -357,6 +357,8 @@ public sealed record ManaReleaseDisplayState(
     bool IsArmed,
     RealityState LightningStored,
     RealityState IceStored,
+    RealityState LightningRelease,
+    RealityState IceRelease,
     bool IsManaReleaseActive,
     ManaReleaseSafeZone SafeZone);
 
