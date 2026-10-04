@@ -60,6 +60,15 @@ public enum GazeDirectionNaming
     OutIn,
 }
 
+public enum ManaReleaseSafeZone
+{
+    Unknown,
+    Lightning,
+    Ice,
+    Both,
+    None,
+}
+
 internal static class P4Flood
 {
     public const uint AllaganFieldStatusId = 454;
@@ -343,3 +352,13 @@ public sealed record P4PullSnapshot(
     float CombatElapsedSeconds,
     IReadOnlyList<P4DebuffRecord> Debuffs,
     IReadOnlyList<BossTellSnapshot> BossTells);
+
+public sealed record ManaReleaseDisplayState(
+    bool IsArmed,
+    RealityState LightningStored,
+    RealityState IceStored,
+    bool IsManaReleaseActive,
+    ManaReleaseSafeZone SafeZone,
+    float RemainingTime);
+
+public sealed record ManaReleaseDiagnosticEntry(DateTime TimestampUtc, string Message);

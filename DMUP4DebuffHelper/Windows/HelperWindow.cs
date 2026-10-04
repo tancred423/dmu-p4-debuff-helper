@@ -70,6 +70,7 @@ public sealed class HelperWindow : Window, IDisposable
                 DrawP4View(
                     GetOrderedAssignments(plugin.CurrentAssignments),
                     GetOrderedAssignments(plugin.CurrentGazeAssignments),
+                    plugin.ManaReleaseDisplayState,
                     isPreview: false);
                 break;
             case DmuHelperDisplayMode.P3BlackHole:
@@ -96,10 +97,11 @@ public sealed class HelperWindow : Window, IDisposable
     private void DrawP4View(
         IReadOnlyList<P4DebuffAssignment> assignments,
         IReadOnlyList<P4DebuffAssignment> gazeAssignments,
+        ManaReleaseDisplayState? manaReleaseState,
         bool isPreview)
     {
         var displayedGazes = GetRepresentativeGazeAssignments(gazeAssignments);
-        DrawHeader(isPreview ? "P4 Debuffs Preview" : "P4 Debuffs", assignments.Count + displayedGazes.Count, isPreview);
+        DrawHeader(isPreview ? "P4 Debuffs Preview" : "P4 Debuffs", assignments.Count + displayedGazes.Count + (manaReleaseState?.IsManaReleaseActive == true ? 1 : 0), isPreview);
         if (plugin.Configuration.HelperCollapsed)
         {
             return;
@@ -112,22 +114,62 @@ public sealed class HelperWindow : Window, IDisposable
             return;
         }
 
-        DrawP4Content(assignments, displayedGazes);
+        DrawP4Content(assignments, displayedGazes, manaReleaseState);
     }
 
     private void DrawP4Content(
         IReadOnlyList<P4DebuffAssignment> assignments,
-        IReadOnlyList<GazeDisplayAssignment> gazeAssignments)
+        IReadOnlyList<GazeDisplayAssignment> gazeAssignments,
+        ManaReleaseDisplayState? manaReleaseState = null)
     {
-        if (assignments.Count == 0 && gazeAssignments.Count == 0)
+        if (assignments.Count == 0 && gazeAssignments.Count == 0 && manaReleaseState is null)
         {
             ImGui.TextDisabled("Waiting for P4 debuffs.");
             return;
         }
 
+        if (manaReleaseState is not null)
+        {
+            DrawManaReleaseSection(manaReleaseState);
+            ImGui.Spacing();
+        }
+
         DrawSection("Active", assignments, "Active");
         ImGui.Spacing();
         DrawGazeSection("Gazes", gazeAssignments, "Gazes");
+    }
+
+    private static void DrawManaReleaseSection(ManaReleaseDisplayState state)
+    {
+        ImGui.TextColored(GoldColor, "Mana Release");
+        if (state.LightningStored != RealityState.Unknown)
+        {
+            ImGui.TextUnformatted($"Lightning 1: {state.LightningStored}");
+        }
+
+        if (state.IceStored != RealityState.Unknown)
+        {
+            ImGui.TextUnformatted($"Ice 1: {state.IceStored}");
+        }
+
+        if (!state.IsManaReleaseActive)
+        {
+            return;
+        }
+
+        var callout = state.SafeZone switch
+        {
+            ManaReleaseSafeZone.Lightning => "Stand in LIGHTNING",
+            ManaReleaseSafeZone.Ice => "Stand in ICE",
+            ManaReleaseSafeZone.Both => "Stand in BOTH",
+            ManaReleaseSafeZone.None => "Stand in NONE",
+            _ => "Mana Release: Unknown",
+        };
+        ImGui.TextColored(state.SafeZone == ManaReleaseSafeZone.Unknown ? UnknownColor : GoldColor, callout);
+        if (state.RemainingTime > 0)
+        {
+            ImGui.TextDisabled($"{state.RemainingTime:0.0}s");
+        }
     }
 
     private void DrawP3View(
@@ -432,7 +474,8 @@ public sealed class HelperWindow : Window, IDisposable
         {
             var previewAssignments = GetPreviewAssignments();
             var previewGazes = GetRepresentativeGazeAssignments(GetPreviewGazeAssignments());
-            DrawHeader("P4 Debuffs Preview", previewAssignments.Count + previewGazes.Count, isPreview: true);
+            var previewManaRelease = GetPreviewManaReleaseState();
+            DrawHeader("P4 Debuffs Preview", previewAssignments.Count + previewGazes.Count + (previewManaRelease?.IsManaReleaseActive == true ? 1 : 0), isPreview: true);
         }
 
         if (plugin.Configuration.HelperCollapsed)
@@ -456,7 +499,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
 
         var p4PreviewAssignments = GetPreviewAssignments();
-        DrawP4Content(p4PreviewAssignments, GetRepresentativeGazeAssignments(GetPreviewGazeAssignments()));
+        DrawP4Content(p4PreviewAssignments, GetRepresentativeGazeAssignments(GetPreviewGazeAssignments()), GetPreviewManaReleaseState());
     }
 
     private void DrawPreviewModeSelector()
@@ -688,7 +731,7 @@ public sealed class HelperWindow : Window, IDisposable
         {
             (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 6.8f, "Preview Player", 0, WoundColor.White),
             (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 7.4f, "Preview Player", 0, WoundColor.White),
-            (CursedShriekStatusId, RealityState.Real, 1120, 9.2f, "Preview Player", 0, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 14.1f, "Preview Player", 0, WoundColor.None),
             (5546, RealityState.Real, 1120, 10.4f, "Preview Player", 0, WoundColor.None),
             (5544, RealityState.Fake, 1119, 62.0f, "Preview Player", 0, WoundColor.None),
             (5548, RealityState.Real, 1122, 18.0f, "Preview Player", 0, WoundColor.None),
@@ -698,12 +741,25 @@ public sealed class HelperWindow : Window, IDisposable
         return GetOrderedAssignments(BuildPreviewAssignments(previews));
     }
 
+    private ManaReleaseDisplayState? GetPreviewManaReleaseState()
+    {
+        return plugin.Configuration.EnableExperimentalManaReleaseTracking
+            ? new ManaReleaseDisplayState(
+                true,
+                RealityState.Fake,
+                RealityState.Real,
+                true,
+                ManaReleaseSafeZone.Ice,
+                12.0f)
+            : null;
+    }
+
     private List<P4DebuffAssignment> GetPreviewGazeAssignments()
     {
         var previews = new (uint StatusId, RealityState Reality, ushort TellParam, float Time, string MemberName, int PartyIndex, WoundColor WoundColor)[]
         {
-            (CursedShriekStatusId, RealityState.Real, 1120, 9.2f, "Preview Player", 0, WoundColor.None),
-            (CursedShriekStatusId, RealityState.Real, 1120, 9.5f, "Short Gaze B", 2, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 14.1f, "Preview Player", 0, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 14.4f, "Short Gaze B", 2, WoundColor.None),
             (CursedShriekStatusId, RealityState.Fake, 1119, 17.8f, "Long Gaze A", 3, WoundColor.None),
             (CursedShriekStatusId, RealityState.Fake, 1119, 18.1f, "Long Gaze B", 4, WoundColor.None),
         };

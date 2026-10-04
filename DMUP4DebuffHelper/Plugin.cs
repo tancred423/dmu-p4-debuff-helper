@@ -80,6 +80,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly HelperWindow helperWindow;
     private readonly P3BlackHoleTracker p3BlackHoleTracker;
     private readonly P3LimitCutTracker p3LimitCutTracker;
+    private readonly ManaReleaseTracker manaReleaseTracker;
     private readonly List<PartyStatusEntry> currentEntries = [];
     private readonly List<PartyMemberSnapshot> currentMembers = [];
     private readonly List<P4DebuffAssignment> currentAssignments = [];
@@ -128,6 +129,10 @@ public sealed class Plugin : IDalamudPlugin
 
     public P3LimitCutTracker P3LimitCut => p3LimitCutTracker;
 
+    public ManaReleaseDisplayState? ManaReleaseDisplayState => manaReleaseTracker.DisplayState;
+
+    public IReadOnlyList<ManaReleaseDiagnosticEntry> ManaReleaseDiagnostics => manaReleaseTracker.Diagnostics;
+
     public DmuHelperDisplayMode DisplayMode { get; private set; } = DmuHelperDisplayMode.Empty;
 
     public float CurrentPullElapsedSeconds => pullStartedAtUtc is not null
@@ -153,6 +158,7 @@ public sealed class Plugin : IDalamudPlugin
 
         p3BlackHoleTracker = new P3BlackHoleTracker(this);
         p3LimitCutTracker = new P3LimitCutTracker();
+        manaReleaseTracker = new ManaReleaseTracker(this);
         configWindow = new ConfigWindow(this);
         helperWindow = new HelperWindow(this)
         {
@@ -200,6 +206,7 @@ public sealed class Plugin : IDalamudPlugin
         Framework.Update -= OnFrameworkUpdate;
         RemoveCommands();
         actionEffectHook?.Dispose();
+        manaReleaseTracker.Dispose();
 
         windowSystem.RemoveAllWindows();
         configWindow.Dispose();
@@ -313,6 +320,8 @@ public sealed class Plugin : IDalamudPlugin
             ClearP4LiveState("P4 tracking disabled", captureSnapshot: true);
         }
 
+        ReconcileManaReleaseTracker();
+
         UpdateDisplayMode();
         SaveConfiguration();
     }
@@ -368,6 +377,27 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetEnableExperimentalManaReleaseTracking(bool enabled)
+    {
+        if (Configuration.EnableExperimentalManaReleaseTracking == enabled)
+        {
+            return;
+        }
+
+        Configuration.EnableExperimentalManaReleaseTracking = enabled;
+        ReconcileManaReleaseTracker();
+        UpdateDisplayMode();
+        SaveConfiguration();
+    }
+
+    public void SetEnableManaReleaseDiagnostics(bool enabled)
+    {
+        Configuration.EnableManaReleaseDiagnostics = enabled;
+        SaveConfiguration();
+    }
+
+    public void ClearManaReleaseDiagnostics() => manaReleaseTracker.ClearDiagnostics();
+
     public void SetHelperCollapsed(bool collapsed)
     {
         Configuration.HelperCollapsed = collapsed;
@@ -413,7 +443,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 7)
+        if (Configuration.Version >= 8)
         {
             return;
         }
@@ -437,9 +467,19 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.ShowStackSpreadTiming = false;
         }
 
-        Configuration.ShowP4RealityLabels = true;
-        Configuration.UseMotionStillnessLabels = false;
-        Configuration.Version = 7;
+        if (Configuration.Version < 7)
+        {
+            Configuration.ShowP4RealityLabels = true;
+            Configuration.UseMotionStillnessLabels = false;
+        }
+
+        if (Configuration.Version < 8)
+        {
+            Configuration.EnableExperimentalManaReleaseTracking = false;
+            Configuration.EnableManaReleaseDiagnostics = false;
+        }
+
+        Configuration.Version = 8;
         SaveConfiguration();
     }
 
@@ -529,6 +569,7 @@ public sealed class Plugin : IDalamudPlugin
     private void RefreshStatusSnapshot()
     {
         IsInDmu = ClientState.IsLoggedIn && ClientState.TerritoryType == DmuTerritoryId;
+        ReconcileManaReleaseTracker();
         if (!IsInDmu)
         {
             ResetHelperState("Left DMU");
@@ -549,6 +590,11 @@ public sealed class Plugin : IDalamudPlugin
 
             UpdateDisplayMode();
             return;
+        }
+
+        if (Configuration.EnableExperimentalManaReleaseTracking)
+        {
+            manaReleaseTracker.Update();
         }
 
         var nextEntries = new List<PartyStatusEntry>();
@@ -665,6 +711,10 @@ public sealed class Plugin : IDalamudPlugin
         capturedFloodWounds.Clear();
         statusTimerAnchors.Clear();
         activeBossTellKeysLastFrame.Clear();
+        if (manaReleaseTracker.DisplayState is not null)
+        {
+            manaReleaseTracker.Reset(snapshotReason);
+        }
         ResetPullState();
         p4SeenThisPull = false;
         UpdateDisplayMode();
@@ -687,6 +737,10 @@ public sealed class Plugin : IDalamudPlugin
         capturedDebuffStates.Clear();
         capturedFloodWounds.Clear();
         statusTimerAnchors.Clear();
+        if (manaReleaseTracker.DisplayState is not null)
+        {
+            manaReleaseTracker.Reset(snapshotReason);
+        }
         ResetPullState();
         p4SeenThisPull = false;
     }
@@ -717,7 +771,16 @@ public sealed class Plugin : IDalamudPlugin
         return currentAssignments.Count > 0 ||
             localAssignments.Count > 0 ||
             currentGazeAssignments.Count > 0 ||
-            currentBossTells.Count > 0;
+            currentBossTells.Count > 0 ||
+            manaReleaseTracker.DisplayState is not null;
+    }
+
+    private void ReconcileManaReleaseTracker()
+    {
+        manaReleaseTracker.Reconcile(
+            Configuration.EnableExperimentalManaReleaseTracking &&
+            Configuration.EnableP4Tracking &&
+            IsInDmu);
     }
 
     private void UpdateDisplayMode()

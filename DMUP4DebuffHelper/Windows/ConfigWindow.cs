@@ -50,6 +50,12 @@ public sealed class ConfigWindow : Window, IDisposable
             ImGui.EndTabItem();
         }
 
+        if (configuration.EnableManaReleaseDiagnostics && ImGui.BeginTabItem("Diagnostics"))
+        {
+            DrawManaReleaseDiagnosticsTab();
+            ImGui.EndTabItem();
+        }
+
         ImGui.EndTabBar();
     }
 
@@ -141,6 +147,25 @@ public sealed class ConfigWindow : Window, IDisposable
 
         DrawGazeDirectionNamingSetting();
 
+        ImGui.Separator();
+        ImGui.TextColored(FakeTextColor, "Experimental");
+        var enableManaReleaseTracking = configuration.EnableExperimentalManaReleaseTracking;
+        if (ImGui.Checkbox("Experimental: Track Mana Release", ref enableManaReleaseTracking))
+        {
+            plugin.SetEnableExperimentalManaReleaseTracking(enableManaReleaseTracking);
+        }
+
+        ImGui.TextDisabled("Uses cast patterns and Kefka lock-on VFX. Validate it with diagnostics before relying on it.");
+        ImGui.BeginDisabled(!configuration.EnableExperimentalManaReleaseTracking);
+        var enableManaReleaseDiagnostics = configuration.EnableManaReleaseDiagnostics;
+        if (ImGui.Checkbox("Enable Mana Release diagnostics", ref enableManaReleaseDiagnostics))
+        {
+            plugin.SetEnableManaReleaseDiagnostics(enableManaReleaseDiagnostics);
+        }
+
+        ImGui.TextDisabled("Opt-in only. Keeps up to 500 anonymous in-memory events until cleared or plugin reload.");
+        ImGui.EndDisabled();
+
         ImGui.BeginDisabled(!configuration.EnableFloodTracking);
         DrawFloodDestinationNamingSetting();
         ImGui.EndDisabled();
@@ -150,6 +175,34 @@ public sealed class ConfigWindow : Window, IDisposable
         ImGui.TextWrapped("The helper only scans while you are in DMU.");
         ImGui.TextWrapped("P3 Black Hole appears while assignment data is detected, then disappears when that information is no longer active.");
         ImGui.TextWrapped("P4 debuffs appear automatically when P4 tracking is enabled and known P4 debuffs or boss tell status 2056 are detected.");
+    }
+
+    private void DrawManaReleaseDiagnosticsTab()
+    {
+        var entries = plugin.ManaReleaseDiagnostics;
+        ImGui.TextUnformatted("Experimental Mana Release diagnostics");
+        ImGui.TextDisabled($"{entries.Count}/500 retained events. Events persist across wipes and territory changes.");
+        if (ImGui.Button("Copy all"))
+        {
+            ImGui.SetClipboardText(string.Join(Environment.NewLine, entries.Select(entry => $"{entry.TimestampUtc:O} {entry.Message}")));
+        }
+
+        ImGui.SameLine();
+        if (ImGui.Button("Clear"))
+        {
+            plugin.ClearManaReleaseDiagnostics();
+        }
+
+        ImGui.Separator();
+        if (ImGui.BeginChild("##ManaReleaseDiagnostics", new Vector2(0, 0), true))
+        {
+            foreach (var entry in entries)
+            {
+                ImGui.TextUnformatted($"{entry.TimestampUtc:HH:mm:ss.fff} {entry.Message}");
+            }
+        }
+
+        ImGui.EndChild();
     }
 
     private void DrawStrategySetting()

@@ -7,7 +7,7 @@ namespace DMUP4DebuffHelper;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 7;
+    public int Version { get; set; } = 8;
 
     // Retained for migrating configurations saved before the instance-only option.
     public bool ShowHelper { get; set; } = true;
@@ -33,6 +33,10 @@ public sealed class Configuration : IPluginConfiguration
     public bool UseMotionStillnessLabels { get; set; }
 
     public GazeDirectionNaming GazeDirectionNaming { get; set; } = GazeDirectionNaming.AwayToward;
+
+    public bool EnableExperimentalManaReleaseTracking { get; set; }
+
+    public bool EnableManaReleaseDiagnostics { get; set; }
 
     public BlackHoleStrategyKind SelectedBlackHoleStrategy { get; set; } = BlackHoleStrategyKind.Standard;
 
