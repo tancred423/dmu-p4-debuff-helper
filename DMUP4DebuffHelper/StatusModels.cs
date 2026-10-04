@@ -358,7 +358,6 @@ public sealed record ManaReleaseDisplayState(
     RealityState LightningStored,
     RealityState IceStored,
     bool IsManaReleaseActive,
-    ManaReleaseSafeZone SafeZone,
-    float RemainingTime);
+    ManaReleaseSafeZone SafeZone);
 
 public sealed record ManaReleaseDiagnosticEntry(DateTime TimestampUtc, string Message);

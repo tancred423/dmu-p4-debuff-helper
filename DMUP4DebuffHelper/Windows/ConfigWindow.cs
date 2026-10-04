@@ -147,6 +147,10 @@ public sealed class ConfigWindow : Window, IDisposable
 
         DrawGazeDirectionNamingSetting();
 
+        ImGui.BeginDisabled(!configuration.EnableFloodTracking);
+        DrawFloodDestinationNamingSetting();
+        ImGui.EndDisabled();
+
         ImGui.Separator();
         ImGui.TextColored(FakeTextColor, "Experimental");
         var enableManaReleaseTracking = configuration.EnableExperimentalManaReleaseTracking;
@@ -164,10 +168,6 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         ImGui.TextDisabled("Opt-in only. Keeps up to 500 anonymous in-memory events until cleared or plugin reload.");
-        ImGui.EndDisabled();
-
-        ImGui.BeginDisabled(!configuration.EnableFloodTracking);
-        DrawFloodDestinationNamingSetting();
         ImGui.EndDisabled();
         ImGui.EndDisabled();
 

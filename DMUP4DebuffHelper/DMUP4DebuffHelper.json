@@ -5,7 +5,7 @@
   "DownloadCount": 0,
   "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
   "Description": "Shows configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
-  "Changelog": "Added opt-in experimental Mana Release safe-zone calls, diagnostics, and updated P4 preview timing.",
+  "Changelog": "Moved experimental Mana Release beneath Gazes in a matching panel, removed its timer, and clarified the P4 settings layout.",
   "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
   "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
   "ApplicableVersion": "any",

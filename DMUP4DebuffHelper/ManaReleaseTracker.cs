@@ -46,7 +46,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     private bool manaChargeObserved;
     private nint releaseKefkaAddress;
     private ManaReleaseSafeZone safeZone;
-    private float releaseRemainingTime;
 
     public ManaReleaseTracker(Plugin plugin) => this.plugin = plugin;
 
@@ -62,7 +61,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     }
 
     public ManaReleaseDisplayState? DisplayState => armed || releaseActive
-        ? new ManaReleaseDisplayState(armed, lightningStored, iceStored, releaseActive, safeZone, releaseRemainingTime)
+        ? new ManaReleaseDisplayState(armed, lightningStored, iceStored, releaseActive, safeZone)
         : null;
 
     public void Reconcile(bool shouldRun)
@@ -137,7 +136,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
 
             if (releaseActive)
             {
-                releaseRemainingTime = Math.Max(0, kefka?.TotalCastTime - kefka?.CurrentCastTime ?? 0);
                 if (releaseVfxObserved && !releaseResolved)
                 {
                     ResolveRelease();
@@ -176,7 +174,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         manaChargeObserved = false;
         releaseKefkaAddress = nint.Zero;
         safeZone = ManaReleaseSafeZone.Unknown;
-        releaseRemainingTime = 0;
         while (vfxObservations.TryDequeue(out _)) { }
         activeRelevantCasts.Clear();
         Record($"Reset: {reason}.");
@@ -285,7 +282,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         releaseActive = true;
         safeZone = ManaReleaseSafeZone.Unknown;
         releaseKefkaAddress = kefka.Address;
-        releaseRemainingTime = Math.Max(0, kefka.TotalCastTime - kefka.CurrentCastTime);
         Record($"Mana Release (47781) detected from actor {kefka.EntityId:X8}.");
     }
 
@@ -387,7 +383,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         iceStored = RealityState.Unknown;
         releaseActive = true;
         safeZone = ManaReleaseSafeZone.Unknown;
-        releaseRemainingTime = 0;
         Record($"Error: {message} ({ex.GetType().Name}).");
         if (warnedRuntimeFailure)
         {

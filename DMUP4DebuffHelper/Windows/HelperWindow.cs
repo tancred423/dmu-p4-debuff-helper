@@ -128,20 +128,30 @@ public sealed class HelperWindow : Window, IDisposable
             return;
         }
 
-        if (manaReleaseState is not null)
-        {
-            DrawManaReleaseSection(manaReleaseState);
-            ImGui.Spacing();
-        }
-
         DrawSection("Active", assignments, "Active");
         ImGui.Spacing();
         DrawGazeSection("Gazes", gazeAssignments, "Gazes");
+        if (manaReleaseState is not null)
+        {
+            ImGui.Spacing();
+            DrawManaReleaseSection(manaReleaseState);
+        }
     }
 
     private static void DrawManaReleaseSection(ManaReleaseDisplayState state)
     {
         ImGui.TextColored(GoldColor, "Mana Release");
+        var panelStart = ImGui.GetCursorScreenPos();
+        var panelWidth = MathF.Max(160.0f, ImGui.GetContentRegionAvail().X);
+        var lineCount = (state.LightningStored != RealityState.Unknown ? 1 : 0)
+            + (state.IceStored != RealityState.Unknown ? 1 : 0)
+            + (state.IsManaReleaseActive ? 1 : 0);
+        var panelHeight = HelperPadding * 2.0f + Math.Max(1, lineCount) * ImGui.GetTextLineHeightWithSpacing();
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddRectFilled(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelFillColor), 6.0f);
+        drawList.AddRect(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelBorderColor), 6.0f);
+
+        ImGui.SetCursorScreenPos(panelStart + new Vector2(HelperPadding, HelperPadding));
         if (state.LightningStored != RealityState.Unknown)
         {
             ImGui.TextUnformatted($"Lightning 1: {state.LightningStored}");
@@ -152,24 +162,24 @@ public sealed class HelperWindow : Window, IDisposable
             ImGui.TextUnformatted($"Ice 1: {state.IceStored}");
         }
 
-        if (!state.IsManaReleaseActive)
+        if (state.IsManaReleaseActive)
         {
-            return;
+            var callout = state.SafeZone switch
+            {
+                ManaReleaseSafeZone.Lightning => "Stand in LIGHTNING",
+                ManaReleaseSafeZone.Ice => "Stand in ICE",
+                ManaReleaseSafeZone.Both => "Stand in BOTH",
+                ManaReleaseSafeZone.None => "Stand in NONE",
+                _ => "Mana Release: Unknown",
+            };
+            ImGui.TextColored(state.SafeZone == ManaReleaseSafeZone.Unknown ? UnknownColor : GoldColor, callout);
+        }
+        else if (lineCount == 0)
+        {
+            ImGui.TextDisabled("Waiting for stored mechanics.");
         }
 
-        var callout = state.SafeZone switch
-        {
-            ManaReleaseSafeZone.Lightning => "Stand in LIGHTNING",
-            ManaReleaseSafeZone.Ice => "Stand in ICE",
-            ManaReleaseSafeZone.Both => "Stand in BOTH",
-            ManaReleaseSafeZone.None => "Stand in NONE",
-            _ => "Mana Release: Unknown",
-        };
-        ImGui.TextColored(state.SafeZone == ManaReleaseSafeZone.Unknown ? UnknownColor : GoldColor, callout);
-        if (state.RemainingTime > 0)
-        {
-            ImGui.TextDisabled($"{state.RemainingTime:0.0}s");
-        }
+        ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
     }
 
     private void DrawP3View(
@@ -749,8 +759,7 @@ public sealed class HelperWindow : Window, IDisposable
                 RealityState.Fake,
                 RealityState.Real,
                 true,
-                ManaReleaseSafeZone.Ice,
-                12.0f)
+                ManaReleaseSafeZone.Ice)
             : null;
     }
 
