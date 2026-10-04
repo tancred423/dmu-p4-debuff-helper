@@ -718,7 +718,12 @@ public sealed class HelperWindow : Window, IDisposable
                 preview.Reality,
                 preview.TellParam == 0 ? null : preview.TellParam,
                 rule.Group == P4MechanicGroup.Flood
-                    ? P4Flood.FormatInstruction(rule.Id, preview.WoundColor, floodSide, preview.Reality)
+                    ? P4Flood.FormatInstruction(
+                        rule.Id,
+                        preview.WoundColor,
+                        floodSide,
+                        preview.Reality,
+                        plugin.Configuration.FloodDestinationNaming)
                     : "Preview only.",
                 preview.WoundColor,
                 floodSide));
@@ -943,7 +948,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static float GetAssignmentPanelHeight(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth)
+    private float GetAssignmentPanelHeight(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth)
     {
         if (assignments.Count == 0)
         {
@@ -973,7 +978,7 @@ public sealed class HelperWindow : Window, IDisposable
         return HelperPadding * 2.0f + rows * rowHeight + MathF.Max(0, rows - 1) * spacingY;
     }
 
-    private static void DrawAssignmentStrip(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, string idSuffix)
+    private void DrawAssignmentStrip(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, string idSuffix)
     {
         if (assignments.Count == 0)
         {
@@ -1004,7 +1009,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static void DrawAssignment(P4DebuffAssignment assignment, float width)
+    private void DrawAssignment(P4DebuffAssignment assignment, float width)
     {
         var label = GetRealityLine(assignment);
         var timerText = FormatRemainingTime(assignment.Entry.RemainingTime);
@@ -1078,7 +1083,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static float GetAssignmentWidth(P4DebuffAssignment assignment)
+    private float GetAssignmentWidth(P4DebuffAssignment assignment)
     {
         var label = GetRealityLine(assignment);
         var timerText = FormatRemainingTime(assignment.Entry.RemainingTime);
@@ -1123,13 +1128,13 @@ public sealed class HelperWindow : Window, IDisposable
         return Math.Clamp(plugin.Configuration.HelperBackgroundOpacity, 0.15f, 1.0f);
     }
 
-    private static string FormatAssignmentTooltip(P4DebuffAssignment assignment)
+    private string FormatAssignmentTooltip(P4DebuffAssignment assignment)
     {
         var timerText = FormatRemainingTime(assignment.Entry.RemainingTime);
         var realityLine = assignment.Rule.Group != P4MechanicGroup.Flood && assignment.Reality == RealityState.Unknown
             ? "Tell not captured."
             : GetRealityLine(assignment);
-        return $"{assignment.Entry.MemberName}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{assignment.Instruction}";
+        return $"{assignment.Entry.MemberName}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{FormatAssignmentInstruction(assignment)}";
     }
 
     private static string FormatGazeTooltip(GazeDisplayAssignment displayAssignment, int index, int assignmentCount)
@@ -1156,7 +1161,7 @@ public sealed class HelperWindow : Window, IDisposable
         return index == 0 ? "Short gaze" : "Long gaze";
     }
 
-    private static string GetRealityLine(P4DebuffAssignment assignment)
+    private string GetRealityLine(P4DebuffAssignment assignment)
     {
         var destinationWound = P4Flood.ResolveDestinationWound(assignment.Rule.Id, assignment.WoundColor, assignment.Reality);
         if (destinationWound == WoundColor.None)
@@ -1166,7 +1171,7 @@ public sealed class HelperWindow : Window, IDisposable
 
         if (destinationWound != WoundColor.None)
         {
-            return $"Go {P4Flood.FormatWound(destinationWound)}";
+            return $"Go {P4Flood.FormatDestination(destinationWound, plugin.Configuration.FloodDestinationNaming)}";
         }
 
         var statusWound = P4Flood.GetStatusWoundColor(assignment.Rule.Id);
@@ -1194,6 +1199,18 @@ public sealed class HelperWindow : Window, IDisposable
             RealityState.Fake => $"Fake: {GetResolutionLabel(assignment)}",
             _ => "Unknown",
         };
+    }
+
+    private string FormatAssignmentInstruction(P4DebuffAssignment assignment)
+    {
+        return assignment.Rule.Group == P4MechanicGroup.Flood
+            ? P4Flood.FormatInstruction(
+                assignment.Rule.Id,
+                assignment.WoundColor,
+                assignment.FloodSide,
+                assignment.Reality,
+                plugin.Configuration.FloodDestinationNaming)
+            : assignment.Instruction;
     }
 
     private static string GetResolutionLabel(P4DebuffAssignment assignment)

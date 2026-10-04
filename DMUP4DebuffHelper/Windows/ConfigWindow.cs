@@ -94,17 +94,42 @@ public sealed class ConfigWindow : Window, IDisposable
 
         ImGui.Separator();
         ImGui.TextUnformatted("P3 Black Hole");
+        var enableP3Tracking = configuration.EnableP3Tracking;
+        if (ImGui.Checkbox("Enable P3 tracking", ref enableP3Tracking))
+        {
+            plugin.SetEnableP3Tracking(enableP3Tracking);
+        }
+
+        ImGui.BeginDisabled(!configuration.EnableP3Tracking);
         DrawStrategySetting();
         ImGui.TextDisabled("Does not support double tethers, yet.");
+        ImGui.EndDisabled();
 
         ImGui.Separator();
         ImGui.TextUnformatted("P4 Debuffs");
-        ImGui.TextDisabled("P4 debuff detection is automatic. The helper only keeps the P4 debuffs it knows how to resolve.");
+        var enableP4Tracking = configuration.EnableP4Tracking;
+        if (ImGui.Checkbox("Enable P4 tracking", ref enableP4Tracking))
+        {
+            plugin.SetEnableP4Tracking(enableP4Tracking);
+        }
+
+        ImGui.BeginDisabled(!configuration.EnableP4Tracking);
+        var enableFloodTracking = configuration.EnableFloodTracking;
+        if (ImGui.Checkbox("Track Flood debuffs", ref enableFloodTracking))
+        {
+            plugin.SetEnableFloodTracking(enableFloodTracking);
+        }
+
+        ImGui.TextDisabled("Tracks Allagan Field, Beyond Death, Black Wound, and White Wound.");
+        ImGui.BeginDisabled(!configuration.EnableFloodTracking);
+        DrawFloodDestinationNamingSetting();
+        ImGui.EndDisabled();
+        ImGui.EndDisabled();
 
         ImGui.Separator();
         ImGui.TextWrapped("The helper only scans while you are in DMU.");
         ImGui.TextWrapped("P3 Black Hole appears while assignment data is detected, then disappears when that information is no longer active.");
-        ImGui.TextWrapped("P4 debuffs appear automatically when known P4 debuffs or boss tell status 2056 are detected.");
+        ImGui.TextWrapped("P4 debuffs appear automatically when P4 tracking is enabled and known P4 debuffs or boss tell status 2056 are detected.");
     }
 
     private void DrawStrategySetting()
@@ -132,6 +157,22 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         ImGui.EndCombo();
+    }
+
+    private void DrawFloodDestinationNamingSetting()
+    {
+        ImGui.TextUnformatted("Flood destination calls");
+        var gameNames = configuration.FloodDestinationNaming == FloodDestinationNaming.GameNames;
+        if (ImGui.RadioButton("Black / White (game names)", gameNames))
+        {
+            plugin.SetFloodDestinationNaming(FloodDestinationNaming.GameNames);
+        }
+
+        var visualColors = configuration.FloodDestinationNaming == FloodDestinationNaming.VisualColors;
+        if (ImGui.RadioButton("Blue / Purple (visual colors)", visualColors))
+        {
+            plugin.SetFloodDestinationNaming(FloodDestinationNaming.VisualColors);
+        }
     }
 
     private void DrawBuffSummaryTab()
@@ -402,7 +443,7 @@ public sealed class ConfigWindow : Window, IDisposable
                 ImGui.TableNextColumn();
                 ImGui.TextUnformatted(FormatTime(record.RemainingTimeAtCapture));
                 ImGui.TableNextColumn();
-                ImGui.TextWrapped(record.Instruction);
+                ImGui.TextWrapped(FormatInstruction(record));
             }
 
             ImGui.EndTable();
@@ -443,7 +484,7 @@ public sealed class ConfigWindow : Window, IDisposable
         return GetRealityColor(record.Reality);
     }
 
-    private static string FormatState(P4DebuffRecord record)
+    private string FormatState(P4DebuffRecord record)
     {
         if (record.Group == P4MechanicGroup.Flood)
         {
@@ -455,7 +496,7 @@ public sealed class ConfigWindow : Window, IDisposable
 
             if (destinationWound != WoundColor.None)
             {
-                return $"Go {P4Flood.FormatWound(destinationWound)}";
+                return $"Go {P4Flood.FormatDestination(destinationWound, configuration.FloodDestinationNaming)}";
             }
 
             var statusWound = P4Flood.GetStatusWoundColor(record.StatusId);
@@ -474,6 +515,18 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         return FormatReality(record.Reality);
+    }
+
+    private string FormatInstruction(P4DebuffRecord record)
+    {
+        return record.Group == P4MechanicGroup.Flood
+            ? P4Flood.FormatInstruction(
+                record.StatusId,
+                record.WoundColor,
+                record.FloodSide,
+                record.Reality,
+                configuration.FloodDestinationNaming)
+            : record.Instruction;
     }
 
     private static string FormatReality(RealityState reality)

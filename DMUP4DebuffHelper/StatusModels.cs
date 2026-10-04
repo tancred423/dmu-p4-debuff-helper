@@ -48,6 +48,12 @@ public enum FloodSide
     Purple,
 }
 
+public enum FloodDestinationNaming
+{
+    GameNames,
+    VisualColors,
+}
+
 internal static class P4Flood
 {
     public const uint AllaganFieldStatusId = 454;
@@ -186,6 +192,20 @@ internal static class P4Flood
         };
     }
 
+    public static string FormatDestination(WoundColor woundColor, FloodDestinationNaming naming)
+    {
+        return naming switch
+        {
+            FloodDestinationNaming.VisualColors => woundColor switch
+            {
+                WoundColor.Black => "Blue",
+                WoundColor.White => "Purple",
+                _ => "Unknown",
+            },
+            _ => FormatWound(woundColor),
+        };
+    }
+
     public static string FormatWoundDebuff(WoundColor woundColor)
     {
         return woundColor == WoundColor.None
@@ -193,12 +213,21 @@ internal static class P4Flood
             : $"{FormatWound(woundColor)} Wound";
     }
 
-    public static string FormatInstruction(uint statusId, WoundColor woundColor, FloodSide floodSide)
+    public static string FormatInstruction(
+        uint statusId,
+        WoundColor woundColor,
+        FloodSide floodSide,
+        FloodDestinationNaming naming = FloodDestinationNaming.GameNames)
     {
-        return FormatInstruction(statusId, woundColor, floodSide, RealityState.Unknown);
+        return FormatInstruction(statusId, woundColor, floodSide, RealityState.Unknown, naming);
     }
 
-    public static string FormatInstruction(uint statusId, WoundColor woundColor, FloodSide floodSide, RealityState reality)
+    public static string FormatInstruction(
+        uint statusId,
+        WoundColor woundColor,
+        FloodSide floodSide,
+        RealityState reality,
+        FloodDestinationNaming naming = FloodDestinationNaming.GameNames)
     {
         var destinationWound = ResolveDestinationWound(statusId, woundColor, reality);
         if (destinationWound == WoundColor.None)
@@ -207,7 +236,7 @@ internal static class P4Flood
         }
 
         var destinationText = destinationWound != WoundColor.None
-            ? FormatWound(destinationWound).ToLowerInvariant()
+            ? FormatDestination(destinationWound, naming).ToLowerInvariant()
             : null;
 
         return statusId switch

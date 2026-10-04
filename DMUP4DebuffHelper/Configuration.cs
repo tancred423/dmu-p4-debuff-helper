@@ -7,7 +7,7 @@ namespace DMUP4DebuffHelper;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 4;
+    public int Version { get; set; } = 5;
 
     // Retained for migrating configurations saved before the instance-only option.
     public bool ShowHelper { get; set; } = true;
@@ -17,6 +17,14 @@ public sealed class Configuration : IPluginConfiguration
     public bool PreviewWhenInactive { get; set; }
 
     public bool HelperCollapsed { get; set; }
+
+    public bool EnableP3Tracking { get; set; } = true;
+
+    public bool EnableP4Tracking { get; set; } = true;
+
+    public bool EnableFloodTracking { get; set; } = true;
+
+    public FloodDestinationNaming FloodDestinationNaming { get; set; } = FloodDestinationNaming.GameNames;
 
     public BlackHoleStrategyKind SelectedBlackHoleStrategy { get; set; } = BlackHoleStrategyKind.Standard;
 

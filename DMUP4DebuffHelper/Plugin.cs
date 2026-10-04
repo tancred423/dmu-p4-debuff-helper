@@ -143,6 +143,9 @@ public sealed class Plugin : IDalamudPlugin
         Configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         MigrateConfiguration();
         Configuration.SelectedBlackHoleStrategy = DMUP3BlackholeHelper.BlackHoleStrategy.Normalize(Configuration.SelectedBlackHoleStrategy);
+        Configuration.FloodDestinationNaming = Enum.IsDefined(typeof(FloodDestinationNaming), Configuration.FloodDestinationNaming)
+            ? Configuration.FloodDestinationNaming
+            : FloodDestinationNaming.GameNames;
         IsInDmu = ClientState.IsLoggedIn && ClientState.TerritoryType == DmuTerritoryId;
 
         p3BlackHoleTracker = new P3BlackHoleTracker(this);
@@ -276,6 +279,66 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetEnableP3Tracking(bool enabled)
+    {
+        if (Configuration.EnableP3Tracking == enabled)
+        {
+            return;
+        }
+
+        Configuration.EnableP3Tracking = enabled;
+        if (!enabled)
+        {
+            p3BlackHoleTracker.ClearLiveDisplay("P3 tracking disabled");
+            p3LimitCutTracker.Reset();
+        }
+
+        UpdateDisplayMode();
+        SaveConfiguration();
+    }
+
+    public void SetEnableP4Tracking(bool enabled)
+    {
+        if (Configuration.EnableP4Tracking == enabled)
+        {
+            return;
+        }
+
+        Configuration.EnableP4Tracking = enabled;
+        if (!enabled)
+        {
+            ClearP4LiveState("P4 tracking disabled", captureSnapshot: true);
+        }
+
+        UpdateDisplayMode();
+        SaveConfiguration();
+    }
+
+    public void SetEnableFloodTracking(bool enabled)
+    {
+        if (Configuration.EnableFloodTracking == enabled)
+        {
+            return;
+        }
+
+        Configuration.EnableFloodTracking = enabled;
+        if (!enabled)
+        {
+            ClearFloodLiveState();
+        }
+
+        UpdateDisplayMode();
+        SaveConfiguration();
+    }
+
+    public void SetFloodDestinationNaming(FloodDestinationNaming naming)
+    {
+        Configuration.FloodDestinationNaming = Enum.IsDefined(typeof(FloodDestinationNaming), naming)
+            ? naming
+            : FloodDestinationNaming.GameNames;
+        SaveConfiguration();
+    }
+
     public void SetHelperCollapsed(bool collapsed)
     {
         Configuration.HelperCollapsed = collapsed;
@@ -321,7 +384,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 4)
+        if (Configuration.Version >= 5)
         {
             return;
         }
@@ -332,7 +395,11 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.PreviewWhenInactive = false;
         }
 
-        Configuration.Version = 4;
+        Configuration.EnableP3Tracking = true;
+        Configuration.EnableP4Tracking = true;
+        Configuration.EnableFloodTracking = true;
+        Configuration.FloodDestinationNaming = FloodDestinationNaming.GameNames;
+        Configuration.Version = 5;
         SaveConfiguration();
     }
 
@@ -404,7 +471,9 @@ public sealed class Plugin : IDalamudPlugin
         ActionEffectHandler.TargetEffects* effects,
         GameObjectId* targetEntityIds)
     {
-        if (!p4SeenThisPull && ClientState.TerritoryType == DmuTerritoryId)
+        if (Configuration.EnableP3Tracking &&
+            (!Configuration.EnableP4Tracking || !p4SeenThisPull) &&
+            ClientState.TerritoryType == DmuTerritoryId)
         {
             p3LimitCutTracker.ProcessActionEffect(casterEntityId, header);
             p3BlackHoleTracker.ProcessActionEffect(casterEntityId, header, targetEntityIds);
@@ -423,6 +492,22 @@ public sealed class Plugin : IDalamudPlugin
         if (!IsInDmu)
         {
             ResetHelperState("Left DMU");
+            return;
+        }
+
+        if (!Configuration.EnableP4Tracking)
+        {
+            ClearP4LiveState("P4 tracking disabled", captureSnapshot: false);
+            if (Configuration.EnableP3Tracking)
+            {
+                p3BlackHoleTracker.Refresh(isInDmu: true, suppressLiveForP4: false);
+                if (p3BlackHoleTracker.HasLiveSignal)
+                {
+                    p3LimitCutTracker.Reset();
+                }
+            }
+
+            UpdateDisplayMode();
             return;
         }
 
@@ -457,7 +542,8 @@ public sealed class Plugin : IDalamudPlugin
                 }
 
                 var isWatched = WatchedStatuses.TryGetValue(status.StatusId, out var watchedStatus);
-                if (!isWatched)
+                if (!isWatched ||
+                    (!Configuration.EnableFloodTracking && watchedStatus!.Group == P4MechanicGroup.Flood))
                 {
                     continue;
                 }
@@ -511,7 +597,7 @@ public sealed class Plugin : IDalamudPlugin
             p3LimitCutTracker.Reset();
         }
 
-        if (!p4SeenThisPull)
+        if (Configuration.EnableP3Tracking && !p4SeenThisPull)
         {
             p3BlackHoleTracker.Refresh(isInDmu: true, suppressLiveForP4: false);
             if (p3BlackHoleTracker.HasLiveSignal)
@@ -544,6 +630,48 @@ public sealed class Plugin : IDalamudPlugin
         UpdateDisplayMode();
     }
 
+    private void ClearP4LiveState(string snapshotReason, bool captureSnapshot)
+    {
+        if (captureSnapshot)
+        {
+            CaptureCurrentPullSnapshot(snapshotReason);
+        }
+
+        currentEntries.Clear();
+        currentMembers.Clear();
+        currentAssignments.Clear();
+        localAssignments.Clear();
+        currentGazeAssignments.Clear();
+        currentBossTells.Clear();
+        latestBossTells.Clear();
+        capturedDebuffStates.Clear();
+        capturedFloodWounds.Clear();
+        statusTimerAnchors.Clear();
+        ResetPullState();
+        p4SeenThisPull = false;
+    }
+
+    private void ClearFloodLiveState()
+    {
+        var floodEntryKeys = currentEntries
+            .Where(entry => WatchedStatuses.TryGetValue(entry.StatusId, out var rule) && rule.Group == P4MechanicGroup.Flood)
+            .Select(entry => entry.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        currentEntries.RemoveAll(entry => floodEntryKeys.Contains(entry.Key));
+        currentAssignments.RemoveAll(assignment => assignment.Rule.Group == P4MechanicGroup.Flood);
+        localAssignments.RemoveAll(assignment => assignment.Rule.Group == P4MechanicGroup.Flood);
+        foreach (var key in floodEntryKeys)
+        {
+            capturedDebuffStates.Remove(key);
+            statusTimerAnchors.Remove(key);
+            activeDebuffRecordIndexes.Remove(key);
+        }
+
+        capturedFloodWounds.Clear();
+        UpdateCurrentPullDebuffRecords();
+    }
+
     private bool HasP4LiveSignal()
     {
         return currentAssignments.Count > 0 ||
@@ -554,9 +682,11 @@ public sealed class Plugin : IDalamudPlugin
 
     private void UpdateDisplayMode()
     {
-        DisplayMode = HasP4LiveSignal()
+        DisplayMode = Configuration.EnableP4Tracking && HasP4LiveSignal()
             ? DmuHelperDisplayMode.P4Debuffs
-            : !p4SeenThisPull && (p3BlackHoleTracker.HasLiveSignal || p3LimitCutTracker.HasLiveSignal)
+            : Configuration.EnableP3Tracking &&
+                (!Configuration.EnableP4Tracking || !p4SeenThisPull) &&
+                (p3BlackHoleTracker.HasLiveSignal || p3LimitCutTracker.HasLiveSignal)
                 ? DmuHelperDisplayMode.P3BlackHole
                 : Configuration.PreviewWhenInactive
                     ? DmuHelperDisplayMode.Preview
@@ -914,13 +1044,18 @@ public sealed class Plugin : IDalamudPlugin
         return $"{boss}:{group}";
     }
 
-    private static string GetInstruction(WatchedStatus rule, RealityState reality, WoundColor woundColor, FloodSide floodSide)
+    private string GetInstruction(WatchedStatus rule, RealityState reality, WoundColor woundColor, FloodSide floodSide)
     {
         return rule.Group switch
         {
             P4MechanicGroup.GrandCross => GetGrandCrossInstruction(rule.Id, reality),
             P4MechanicGroup.Chaos => GetChaosInstruction(rule.Id, reality),
-            P4MechanicGroup.Flood => P4Flood.FormatInstruction(rule.Id, woundColor, floodSide, reality),
+            P4MechanicGroup.Flood => P4Flood.FormatInstruction(
+                rule.Id,
+                woundColor,
+                floodSide,
+                reality,
+                Configuration.FloodDestinationNaming),
             _ => "Tracked status.",
         };
     }
