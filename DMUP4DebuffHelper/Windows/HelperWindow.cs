@@ -807,7 +807,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private static void DrawSection(string label, IReadOnlyList<P4DebuffAssignment> assignments, string idSuffix)
+    private void DrawSection(string label, IReadOnlyList<P4DebuffAssignment> assignments, string idSuffix)
     {
         ImGui.TextColored(GoldColor, label);
         var panelStart = ImGui.GetCursorScreenPos();

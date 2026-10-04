@@ -349,7 +349,7 @@ public sealed class ConfigWindow : Window, IDisposable
         DrawDebuffRecordSummary(plugin.CurrentPullDebuffRecords, "Current");
     }
 
-    private static void DrawPullHistory(IReadOnlyList<P4PullSnapshot> snapshots)
+    private void DrawPullHistory(IReadOnlyList<P4PullSnapshot> snapshots)
     {
         if (snapshots.Count == 0)
         {
@@ -364,7 +364,7 @@ public sealed class ConfigWindow : Window, IDisposable
         }
     }
 
-    private static void DrawPullSnapshot(P4PullSnapshot snapshot, int pullNumber)
+    private void DrawPullSnapshot(P4PullSnapshot snapshot, int pullNumber)
     {
         var header = $"Pull {pullNumber} - Timer {FormatCombatTimer(snapshot.CombatElapsedSeconds)}###P4PullSnapshot{pullNumber}";
         if (!ImGui.CollapsingHeader(header))
@@ -395,7 +395,7 @@ public sealed class ConfigWindow : Window, IDisposable
         }
     }
 
-    private static void DrawDebuffRecordSummary(IReadOnlyList<P4DebuffRecord> records, string idSuffix)
+    private void DrawDebuffRecordSummary(IReadOnlyList<P4DebuffRecord> records, string idSuffix)
     {
         ImGui.TextUnformatted("Debuff records");
         if (records.Count == 0)
