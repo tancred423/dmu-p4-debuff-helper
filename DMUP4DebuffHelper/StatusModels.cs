@@ -206,10 +206,17 @@ internal static class P4Flood
         };
     }
 
-    public static string FormatWoundDebuff(WoundColor woundColor)
+    public static string FormatWoundDebuff(
+        WoundColor woundColor,
+        FloodDestinationNaming naming = FloodDestinationNaming.GameNames)
     {
-        return woundColor == WoundColor.None
-            ? "Wound"
+        if (woundColor == WoundColor.None)
+        {
+            return "Wound";
+        }
+
+        return naming == FloodDestinationNaming.VisualColors
+            ? $"{FormatDestination(woundColor, naming)} Vuln"
             : $"{FormatWound(woundColor)} Wound";
     }
 
@@ -245,8 +252,8 @@ internal static class P4Flood
             AllaganFieldStatusId => "Allagan Field: waiting for the truth/lie tell.",
             BeyondDeath1StatusId or BeyondDeath2StatusId when destinationText is not null => $"Beyond Death: go {destinationText}.",
             BeyondDeath1StatusId or BeyondDeath2StatusId => "Beyond Death: waiting for Wound.",
-            WhiteWound1StatusId or WhiteWound2StatusId => "White Wound.",
-            BlackWound1StatusId or BlackWound2StatusId => "Black Wound.",
+            WhiteWound1StatusId or WhiteWound2StatusId => $"{FormatWoundDebuff(WoundColor.White, naming)}.",
+            BlackWound1StatusId or BlackWound2StatusId => $"{FormatWoundDebuff(WoundColor.Black, naming)}.",
             _ => "Tracked Flood debuff.",
         };
     }

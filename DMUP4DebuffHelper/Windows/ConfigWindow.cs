@@ -175,7 +175,7 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         var visualColors = configuration.FloodDestinationNaming == FloodDestinationNaming.VisualColors;
-        if (ImGui.RadioButton("Blue / Purple (visual colors)", visualColors))
+        if (ImGui.RadioButton("Blue / Purple (descriptive colors)", visualColors))
         {
             plugin.SetFloodDestinationNaming(FloodDestinationNaming.VisualColors);
         }
@@ -508,7 +508,7 @@ public sealed class ConfigWindow : Window, IDisposable
             var statusWound = P4Flood.GetStatusWoundColor(record.StatusId);
             if (statusWound != WoundColor.None)
             {
-                return P4Flood.FormatWoundDebuff(statusWound);
+                return P4Flood.FormatWoundDebuff(statusWound, configuration.FloodDestinationNaming);
             }
 
             return record.StatusId switch

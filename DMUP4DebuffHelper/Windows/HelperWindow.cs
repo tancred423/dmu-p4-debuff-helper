@@ -1178,7 +1178,7 @@ public sealed class HelperWindow : Window, IDisposable
         var statusWound = P4Flood.GetStatusWoundColor(assignment.Rule.Id);
         if (statusWound != WoundColor.None)
         {
-            return P4Flood.FormatWoundDebuff(statusWound);
+            return P4Flood.FormatWoundDebuff(statusWound, plugin.Configuration.FloodDestinationNaming);
         }
 
         if (assignment.Rule.Group == P4MechanicGroup.Flood)

@@ -5,7 +5,7 @@
   "DownloadCount": 0,
   "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
   "Description": "Shows configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
-  "Changelog": "Added P3/P4 and Flood tracking toggles, Black/White or Blue/Purple Flood calls, and optional Short/Long Stack/Spread labels.",
+  "Changelog": "Added P3/P4 and Flood tracking toggles, Black/White or descriptive Blue/Purple Flood calls with Blue/Purple Vuln labels, and optional Short/Long Stack/Spread labels.",
   "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
   "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
   "ApplicableVersion": "any",
