@@ -688,6 +688,7 @@ public sealed class HelperWindow : Window, IDisposable
         {
             (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 6.8f, "Preview Player", 0, WoundColor.White),
             (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 7.4f, "Preview Player", 0, WoundColor.White),
+            (CursedShriekStatusId, RealityState.Real, 1120, 9.2f, "Preview Player", 0, WoundColor.None),
             (5546, RealityState.Real, 1120, 10.4f, "Preview Player", 0, WoundColor.None),
             (5544, RealityState.Fake, 1119, 62.0f, "Preview Player", 0, WoundColor.None),
             (5548, RealityState.Real, 1122, 18.0f, "Preview Player", 0, WoundColor.None),
@@ -701,7 +702,7 @@ public sealed class HelperWindow : Window, IDisposable
     {
         var previews = new (uint StatusId, RealityState Reality, ushort TellParam, float Time, string MemberName, int PartyIndex, WoundColor WoundColor)[]
         {
-            (CursedShriekStatusId, RealityState.Real, 1120, 9.2f, "Short Gaze A", 1, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 9.2f, "Preview Player", 0, WoundColor.None),
             (CursedShriekStatusId, RealityState.Real, 1120, 9.5f, "Short Gaze B", 2, WoundColor.None),
             (CursedShriekStatusId, RealityState.Fake, 1119, 17.8f, "Long Gaze A", 3, WoundColor.None),
             (CursedShriekStatusId, RealityState.Fake, 1119, 18.1f, "Long Gaze B", 4, WoundColor.None),
@@ -1160,7 +1161,9 @@ public sealed class HelperWindow : Window, IDisposable
     private string FormatAssignmentTooltip(P4DebuffAssignment assignment)
     {
         var timerText = FormatRemainingTime(assignment.Entry.RemainingTime);
-        var realityLine = assignment.Rule.Group != P4MechanicGroup.Flood && assignment.Reality == RealityState.Unknown
+        var realityLine = assignment.Rule.Id == CursedShriekStatusId
+            ? FormatLocalGazeCall(assignment.Reality)
+            : assignment.Rule.Group != P4MechanicGroup.Flood && assignment.Reality == RealityState.Unknown
             ? "Tell not captured."
             : GetRealityLine(assignment);
         return $"{assignment.Entry.MemberName}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{FormatAssignmentInstruction(assignment)}";
@@ -1177,7 +1180,7 @@ public sealed class HelperWindow : Window, IDisposable
         var realityLine = assignment.Reality == RealityState.Unknown
             ? "Tell not captured."
             : FormatResolvedCall(assignment);
-        return $"{timingLabel}\n{playerLine}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{assignment.Instruction}";
+        return $"{timingLabel}\n{playerLine}\n{assignment.Rule.Name}\nTimer: {timerText}\n{realityLine}\n{FormatPartyGazeInstruction(assignment.Reality)}";
     }
 
     private static string GetGazeTimingLabel(int index, int assignmentCount)
@@ -1192,6 +1195,11 @@ public sealed class HelperWindow : Window, IDisposable
 
     private string GetRealityLine(P4DebuffAssignment assignment)
     {
+        if (assignment.Rule.Id == CursedShriekStatusId)
+        {
+            return FormatLocalGazeCall(assignment.Reality);
+        }
+
         var destinationWound = P4Flood.ResolveDestinationWound(assignment.Rule.Id, assignment.WoundColor, assignment.Reality);
         if (destinationWound == WoundColor.None)
         {
@@ -1238,6 +1246,31 @@ public sealed class HelperWindow : Window, IDisposable
             : resolution;
     }
 
+    private string FormatLocalGazeCall(RealityState reality)
+    {
+        return reality == RealityState.Unknown
+            ? "Go in"
+            : $"Go in ({FormatGazeDirection(reality, uppercase: true)})";
+    }
+
+    private string FormatPartyGazeInstruction(RealityState reality)
+    {
+        return reality == RealityState.Unknown
+            ? "Gaze holder goes in. Look direction not captured."
+            : $"Gaze holder goes in. Look {FormatGazeDirection(reality, uppercase: plugin.Configuration.GazeDirectionNaming == GazeDirectionNaming.OutIn)}.";
+    }
+
+    private string FormatGazeDirection(RealityState reality, bool uppercase)
+    {
+        var direction = plugin.Configuration.GazeDirectionNaming switch
+        {
+            GazeDirectionNaming.OutIn => reality == RealityState.Real ? "OUT" : "IN",
+            _ => reality == RealityState.Real ? "away" : "toward",
+        };
+
+        return uppercase ? direction.ToUpperInvariant() : direction;
+    }
+
     private string GetStackSpreadTimingSuffix(P4DebuffAssignment assignment)
     {
         if (!plugin.Configuration.ShowStackSpreadTiming || assignment.Rule.Id is not (5545 or 5544))
@@ -1250,6 +1283,13 @@ public sealed class HelperWindow : Window, IDisposable
 
     private string FormatAssignmentInstruction(P4DebuffAssignment assignment)
     {
+        if (assignment.Rule.Id == CursedShriekStatusId)
+        {
+            return assignment.Reality == RealityState.Unknown
+                ? "Go in. Look direction not captured."
+                : $"Go in. Players look {FormatGazeDirection(assignment.Reality, uppercase: plugin.Configuration.GazeDirectionNaming == GazeDirectionNaming.OutIn)}.";
+        }
+
         return assignment.Rule.Group == P4MechanicGroup.Flood
             ? P4Flood.FormatInstruction(
                 assignment.Rule.Id,
@@ -1266,7 +1306,7 @@ public sealed class HelperWindow : Window, IDisposable
         {
             5545 => assignment.Reality == RealityState.Real ? "Stack" : "Spread",
             5544 => assignment.Reality == RealityState.Real ? "Spread" : "Stack",
-            5543 => assignment.Reality == RealityState.Real ? "Look away" : "Look toward",
+            5543 => $"Look {FormatGazeDirection(assignment.Reality, uppercase: plugin.Configuration.GazeDirectionNaming == GazeDirectionNaming.OutIn)}",
             5546 => assignment.Reality == RealityState.Real
                 ? plugin.Configuration.UseMotionStillnessLabels ? "Stillness" : "Stop"
                 : plugin.Configuration.UseMotionStillnessLabels ? "Motion" : "Move",

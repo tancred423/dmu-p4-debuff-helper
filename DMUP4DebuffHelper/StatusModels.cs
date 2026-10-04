@@ -54,6 +54,12 @@ public enum FloodDestinationNaming
     VisualColors,
 }
 
+public enum GazeDirectionNaming
+{
+    AwayToward,
+    OutIn,
+}
+
 internal static class P4Flood
 {
     public const uint AllaganFieldStatusId = 454;

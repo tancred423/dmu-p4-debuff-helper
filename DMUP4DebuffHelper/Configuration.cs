@@ -32,6 +32,8 @@ public sealed class Configuration : IPluginConfiguration
 
     public bool UseMotionStillnessLabels { get; set; }
 
+    public GazeDirectionNaming GazeDirectionNaming { get; set; } = GazeDirectionNaming.AwayToward;
+
     public BlackHoleStrategyKind SelectedBlackHoleStrategy { get; set; } = BlackHoleStrategyKind.Standard;
 
     public float HelperFontScale { get; set; } = 1.0f;

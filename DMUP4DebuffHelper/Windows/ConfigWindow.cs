@@ -139,6 +139,8 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetUseMotionStillnessLabels(useMotionStillnessLabels);
         }
 
+        DrawGazeDirectionNamingSetting();
+
         ImGui.BeginDisabled(!configuration.EnableFloodTracking);
         DrawFloodDestinationNamingSetting();
         ImGui.EndDisabled();
@@ -190,6 +192,22 @@ public sealed class ConfigWindow : Window, IDisposable
         if (ImGui.RadioButton("Blue / Purple (descriptive colors)", visualColors))
         {
             plugin.SetFloodDestinationNaming(FloodDestinationNaming.VisualColors);
+        }
+    }
+
+    private void DrawGazeDirectionNamingSetting()
+    {
+        ImGui.TextUnformatted("Gaze direction calls");
+        var awayToward = configuration.GazeDirectionNaming == GazeDirectionNaming.AwayToward;
+        if (ImGui.RadioButton("Away / Toward", awayToward))
+        {
+            plugin.SetGazeDirectionNaming(GazeDirectionNaming.AwayToward);
+        }
+
+        var outIn = configuration.GazeDirectionNaming == GazeDirectionNaming.OutIn;
+        if (ImGui.RadioButton("Out / In", outIn))
+        {
+            plugin.SetGazeDirectionNaming(GazeDirectionNaming.OutIn);
         }
     }
 

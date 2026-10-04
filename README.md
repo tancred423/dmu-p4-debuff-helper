@@ -1,3 +1,16 @@
+> [!IMPORTANT]
+> ## Tancred fork
+>
+> This fork adds configurable P3, P4, and Flood tracking; Black/White or Blue/Purple Flood terminology; optional Short/Long Stack/Spread labels; Real/Fake visibility; Motion/Stillness Acceleration Bomb wording; tracking-aware previews; and self-gaze `Go in` calls with Away/Toward or Out/In direction wording.
+>
+> Add this custom repository URL in Dalamud's Plugin Installer settings, under Custom Plugin Repositories, then refresh and install `DMU Helper`:
+>
+> ```text
+> https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/repo.json
+> ```
+>
+> Original README below
+
 # DMU Helper
 
 DMU Helper is a Dalamud plugin for P3 Black Hole assignments and P4 debuffs in Dancing Mad Ultimate.
@@ -11,15 +24,6 @@ It is DMU-only. The helper window pops into the relevant compact view: P3 Black 
 - Chaos: Dynamic Fluid, Entropy.
 - Flood: Black Wound, White Wound, Allagan Field, Beyond Death.
 
-## Settings
-
-- Enable or disable P3 and P4 tracking independently.
-- Toggle Flood debuff tracking without disabling other P4 mechanics.
-- Use game-name Black/White Flood terminology or descriptive Blue/Purple calls, including Blue Vuln and Purple Vuln Wound labels.
-- Optionally show `(Short)` or `(Long)` on Stack/Spread calls. A debuff applied at 55 seconds or less is Short; above 55 seconds is Long.
-- Optionally hide Real/Fake prefixes from P4 callouts.
-- Optionally use Motion/Stillness instead of Move/Stop for Acceleration Bomb callouts.
-
 ## Commands
 
 Open settings:
@@ -32,10 +36,10 @@ Open settings:
 
 ## Dalamud Repository
 
-In Dalamud's Plugin Installer settings, add this URL under Custom Plugin Repositories:
+Add this custom plugin repository URL in Dalamud:
 
 ```text
-https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/repo.json
+https://puni.sh/api/repository/nainai
 ```
 
-Refresh the plugin list, then install `DMU Helper` from Dalamud's plugin installer.
+Then install `DMU Helper` from Dalamud's plugin installer.

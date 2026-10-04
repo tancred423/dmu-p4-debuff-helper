@@ -146,6 +146,9 @@ public sealed class Plugin : IDalamudPlugin
         Configuration.FloodDestinationNaming = Enum.IsDefined(typeof(FloodDestinationNaming), Configuration.FloodDestinationNaming)
             ? Configuration.FloodDestinationNaming
             : FloodDestinationNaming.GameNames;
+        Configuration.GazeDirectionNaming = Enum.IsDefined(typeof(GazeDirectionNaming), Configuration.GazeDirectionNaming)
+            ? Configuration.GazeDirectionNaming
+            : GazeDirectionNaming.AwayToward;
         IsInDmu = ClientState.IsLoggedIn && ClientState.TerritoryType == DmuTerritoryId;
 
         p3BlackHoleTracker = new P3BlackHoleTracker(this);
@@ -354,6 +357,14 @@ public sealed class Plugin : IDalamudPlugin
     public void SetUseMotionStillnessLabels(bool enabled)
     {
         Configuration.UseMotionStillnessLabels = enabled;
+        SaveConfiguration();
+    }
+
+    public void SetGazeDirectionNaming(GazeDirectionNaming naming)
+    {
+        Configuration.GazeDirectionNaming = Enum.IsDefined(typeof(GazeDirectionNaming), naming)
+            ? naming
+            : GazeDirectionNaming.AwayToward;
         SaveConfiguration();
     }
 
@@ -1115,9 +1126,9 @@ public sealed class Plugin : IDalamudPlugin
             },
             5543 => reality switch
             {
-                RealityState.Real => "Stand out and have players look away from you.",
-                RealityState.Fake => "Stand center so players can look at you.",
-                _ => "Shriek: real look away, fake look at.",
+                RealityState.Real => "Gaze holder goes in. Look away from them.",
+                RealityState.Fake => "Gaze holder goes in. Look toward them.",
+                _ => "Gaze holder goes in. Look direction not captured.",
             },
             5546 => reality switch
             {
