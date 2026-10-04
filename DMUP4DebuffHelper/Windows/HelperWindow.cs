@@ -664,7 +664,7 @@ public sealed class HelperWindow : Window, IDisposable
             (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 6.8f, "Preview Player", 0, WoundColor.White),
             (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 7.4f, "Preview Player", 0, WoundColor.White),
             (5545, RealityState.Real, 1120, 10.4f, "Preview Player", 0, WoundColor.None),
-            (5544, RealityState.Fake, 1119, 12.0f, "Preview Player", 0, WoundColor.None),
+            (5544, RealityState.Fake, 1119, 62.0f, "Preview Player", 0, WoundColor.None),
             (5548, RealityState.Real, 1122, 18.0f, "Preview Player", 0, WoundColor.None),
             (5547, RealityState.Fake, 1121, 23.2f, "Preview Player", 0, WoundColor.None),
         };
@@ -726,7 +726,8 @@ public sealed class HelperWindow : Window, IDisposable
                         plugin.Configuration.FloodDestinationNaming)
                     : "Preview only.",
                 preview.WoundColor,
-                floodSide));
+                floodSide,
+                preview.Time));
         }
 
         return assignments;
@@ -1195,10 +1196,20 @@ public sealed class HelperWindow : Window, IDisposable
 
         return assignment.Reality switch
         {
-            RealityState.Real => $"Real: {GetResolutionLabel(assignment)}",
-            RealityState.Fake => $"Fake: {GetResolutionLabel(assignment)}",
+            RealityState.Real => $"Real: {GetResolutionLabel(assignment)}{GetStackSpreadTimingSuffix(assignment)}",
+            RealityState.Fake => $"Fake: {GetResolutionLabel(assignment)}{GetStackSpreadTimingSuffix(assignment)}",
             _ => "Unknown",
         };
+    }
+
+    private string GetStackSpreadTimingSuffix(P4DebuffAssignment assignment)
+    {
+        if (!plugin.Configuration.ShowStackSpreadTiming || assignment.Rule.Id is not (5545 or 5544))
+        {
+            return string.Empty;
+        }
+
+        return assignment.InitialRemainingTime <= 55.0f ? " (Short)" : " (Long)";
     }
 
     private string FormatAssignmentInstruction(P4DebuffAssignment assignment)

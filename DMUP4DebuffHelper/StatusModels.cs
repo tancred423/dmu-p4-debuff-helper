@@ -294,12 +294,14 @@ public sealed record P4DebuffAssignment(
     ushort? TellParam,
     string Instruction,
     WoundColor WoundColor = WoundColor.None,
-    FloodSide FloodSide = FloodSide.None);
+    FloodSide FloodSide = FloodSide.None,
+    float InitialRemainingTime = 0.0f);
 
 public sealed record CapturedDebuffState(
     RealityState Reality,
     ushort? TellParam,
-    DateTime CapturedAtUtc);
+    DateTime CapturedAtUtc,
+    float InitialRemainingTime);
 
 public sealed record CapturedFloodWoundState(
     WoundColor EffectiveWoundColor,

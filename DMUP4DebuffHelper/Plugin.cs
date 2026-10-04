@@ -339,6 +339,12 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetShowStackSpreadTiming(bool enabled)
+    {
+        Configuration.ShowStackSpreadTiming = enabled;
+        SaveConfiguration();
+    }
+
     public void SetHelperCollapsed(bool collapsed)
     {
         Configuration.HelperCollapsed = collapsed;
@@ -384,22 +390,27 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 5)
+        if (Configuration.Version >= 6)
         {
             return;
         }
 
-        if (!Configuration.ShowHelper)
+        if (Configuration.Version < 5)
         {
-            Configuration.OnlyShowInInstance = true;
-            Configuration.PreviewWhenInactive = false;
+            if (!Configuration.ShowHelper)
+            {
+                Configuration.OnlyShowInInstance = true;
+                Configuration.PreviewWhenInactive = false;
+            }
+
+            Configuration.EnableP3Tracking = true;
+            Configuration.EnableP4Tracking = true;
+            Configuration.EnableFloodTracking = true;
+            Configuration.FloodDestinationNaming = FloodDestinationNaming.GameNames;
         }
 
-        Configuration.EnableP3Tracking = true;
-        Configuration.EnableP4Tracking = true;
-        Configuration.EnableFloodTracking = true;
-        Configuration.FloodDestinationNaming = FloodDestinationNaming.GameNames;
-        Configuration.Version = 5;
+        Configuration.ShowStackSpreadTiming = false;
+        Configuration.Version = 6;
         SaveConfiguration();
     }
 
@@ -767,7 +778,7 @@ public sealed class Plugin : IDalamudPlugin
 
             var capturedState = rule.Group == P4MechanicGroup.Flood && P4Flood.UsesTruthLieTell(rule.Id)
                 ? GetOrUpdateCapturedDebuffState(entry, rule)
-                : new CapturedDebuffState(RealityState.Unknown, null, DateTime.UtcNow);
+                : new CapturedDebuffState(RealityState.Unknown, null, DateTime.UtcNow, entry.RemainingTime);
             var woundColor = rule.Group == P4MechanicGroup.Flood
                 ? GetWoundColor(entry.MemberKey)
                 : WoundColor.None;
@@ -782,7 +793,8 @@ public sealed class Plugin : IDalamudPlugin
                     capturedState.TellParam,
                     GetInstruction(rule, capturedState.Reality, woundColor, floodSide),
                     woundColor,
-                    floodSide));
+                    floodSide,
+                    capturedState.InitialRemainingTime));
                 continue;
             }
 
@@ -795,7 +807,8 @@ public sealed class Plugin : IDalamudPlugin
                 capturedState.TellParam,
                 GetInstruction(rule, capturedState.Reality, woundColor, floodSide),
                 woundColor,
-                floodSide));
+                floodSide,
+                capturedState.InitialRemainingTime));
         }
 
         UpdateCurrentPullDebuffRecords();
@@ -830,7 +843,8 @@ public sealed class Plugin : IDalamudPlugin
                 rule,
                 capturedState.Reality,
                 capturedState.TellParam,
-                GetInstruction(rule, capturedState.Reality, WoundColor.None, FloodSide.None)));
+                GetInstruction(rule, capturedState.Reality, WoundColor.None, FloodSide.None),
+                InitialRemainingTime: capturedState.InitialRemainingTime));
         }
     }
 
@@ -933,7 +947,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         if (!capturedDebuffStates.TryGetValue(entry.Key, out var capturedState))
         {
-            capturedState = CaptureDebuffState(rule);
+            capturedState = CaptureDebuffState(rule, entry.RemainingTime);
             capturedDebuffStates[entry.Key] = capturedState;
             return capturedState;
         }
@@ -943,16 +957,21 @@ public sealed class Plugin : IDalamudPlugin
             return capturedState;
         }
 
-        capturedState = new CapturedDebuffState(tell!.Reality, tell.Param, DateTime.UtcNow);
+        capturedState = capturedState with
+        {
+            Reality = tell!.Reality,
+            TellParam = tell.Param,
+            CapturedAtUtc = DateTime.UtcNow,
+        };
         capturedDebuffStates[entry.Key] = capturedState;
         return capturedState;
     }
 
-    private CapturedDebuffState CaptureDebuffState(WatchedStatus rule)
+    private CapturedDebuffState CaptureDebuffState(WatchedStatus rule, float initialRemainingTime)
     {
         return TryGetRelevantTell(rule, out var tell)
-            ? new CapturedDebuffState(tell!.Reality, tell.Param, DateTime.UtcNow)
-            : new CapturedDebuffState(RealityState.Unknown, null, DateTime.UtcNow);
+            ? new CapturedDebuffState(tell!.Reality, tell.Param, DateTime.UtcNow, initialRemainingTime)
+            : new CapturedDebuffState(RealityState.Unknown, null, DateTime.UtcNow, initialRemainingTime);
     }
 
     private void CaptureActiveFloodWounds(IReadOnlyList<PartyStatusEntry> activeEntries, DateTime now)

@@ -121,6 +121,12 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         ImGui.TextDisabled("Tracks Allagan Field, Beyond Death, Black Wound, and White Wound.");
+        var showStackSpreadTiming = configuration.ShowStackSpreadTiming;
+        if (ImGui.Checkbox("Show short/long for stack/spread", ref showStackSpreadTiming))
+        {
+            plugin.SetShowStackSpreadTiming(showStackSpreadTiming);
+        }
+
         ImGui.BeginDisabled(!configuration.EnableFloodTracking);
         DrawFloodDestinationNamingSetting();
         ImGui.EndDisabled();
