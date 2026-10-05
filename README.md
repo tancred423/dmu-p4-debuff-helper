@@ -1,7 +1,17 @@
 > [!IMPORTANT]
 > ## Fork differences
 >
-> This fork adds configurable P3, P4, and Flood tracking; Black/White or Blue/Purple Flood terminology; optional Short/Long Stack/Spread labels; Real/Fake visibility; Motion/Stillness Acceleration Bomb wording; tracking-aware previews; self-gaze `Go in` calls with Away/Toward or Out/In direction wording; and an opt-in experimental Mana Release helper with optional in-game diagnostics and a safe-region panel.
+> This fork adds the following configurations and additions:
+> * P3 and P4 tracking can be disabled completely in case you just need P4 for example.
+> * Flood tracking can be disabled to declutter the information as this mech is very easy. Just hides the Wound and AF/BD debuffs.
+> * Flood terminology: Use "Blue/Purple" instead of "Black/White" and "Blue Vuln/Purple Vuln" instead of "Black Wound/White Wound" to use the in game colors instead of in game names.
+> * Option to add "(Short)/(Long)" to Stack/Spread debuff names. Debuffs < 55s are marked as short and > 55s are long.
+> * Option to hide the "Real:/Fake:" labels from the debuffs as the debuffs already say what you have to do. E. g. the Spread debuff shows "Stack" if fake so no need to display "Fake:".
+> * Option to use "Motion/Stillness" wording instead of "Move/Stop" for Acceleration Bomb.
+> * The preview now respects your config.
+> * Option to use "OUT/IN" wording instead of "Away/Towards" for Shriek facing direction.
+> * Gaze on you is also shown in active window now to remind you to go in. It will have the label `Go in` with Away/Toward or Out/In direction wording.
+> * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both".
 >
 > <img width="671" height="458" alt="image" src="https://github.com/user-attachments/assets/e2b7f688-84fe-4682-9659-1ceda55aec44" />
 >
