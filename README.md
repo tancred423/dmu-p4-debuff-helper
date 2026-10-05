@@ -3,6 +3,9 @@
 >
 > This fork adds configurable P3, P4, and Flood tracking; Black/White or Blue/Purple Flood terminology; optional Short/Long Stack/Spread labels; Real/Fake visibility; Motion/Stillness Acceleration Bomb wording; tracking-aware previews; self-gaze `Go in` calls with Away/Toward or Out/In direction wording; and an opt-in experimental Mana Release helper with optional in-game diagnostics and a safe-region panel.
 >
+> <img width="671" height="458" alt="image" src="https://github.com/user-attachments/assets/e2b7f688-84fe-4682-9659-1ceda55aec44" />
+>
+> Per default this fork behaves like the original plugin. But then you can customise it to your liking.
 > Add this custom repository URL in Dalamud's Plugin Installer settings, under Custom Plugin Repositories, then refresh and install `DMU Helper`:
 >
 > ```text
