@@ -13,8 +13,13 @@
 > * Gaze on you is also shown in active window now to remind you to go in. It will have the label `Go in` with Away/Toward or Out/In direction wording.
 > * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both". It waits quietly for data until P4 is active and does not interfere with P3.
 > * Optional vertical P4 layout: Active calls stack on the left, with Gazes and Mana Release on the right.
+> * Optional referred stack call. If you got short stack/spread a long stack will be added too and vice versa.
 >
-> <img width="671" height="458" alt="image" src="https://github.com/user-attachments/assets/e2b7f688-84fe-4682-9659-1ceda55aec44" />
+> Example with horizontal layout, descriptive colors, added "(Short)/(Long)" text, shriek callout in active window, shriek call out change to OUT/IN, removed "Real/Fake" prefix and referred long stack:
+> <img width="829" height="485" alt="image" src="https://github.com/user-attachments/assets/ee516346-5687-436c-b697-ec9903df5988" />
+>
+> Same example but with vertical table view:
+> <img width="805" height="469" alt="image" src="https://github.com/user-attachments/assets/b23508cc-f388-45e7-874f-7b9a6838b05c" />
 >
 > Per default this fork behaves like the original plugin. But then you can customise it to your liking.
 > Add this custom repository URL in Dalamud's Plugin Installer settings, under Custom Plugin Repositories, then refresh and install `DMU Helper`:
