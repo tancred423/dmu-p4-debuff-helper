@@ -35,6 +35,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     private bool isEnabled;
     private bool runtimeDisabled;
     private bool warnedRuntimeFailure;
+    private bool warnedUpdateFailure;
     private bool armed;
     private RealityState lightningStored;
     private RealityState iceStored;
@@ -113,15 +114,9 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
                 return;
             }
 
-            var casters = Plugin.ObjectTable
-                .Where(obj => obj is IBattleChara { IsCasting: true })
-                .Cast<IBattleChara>()
-                .ToList();
-            var actionIds = casters.Select(caster => caster.CastActionId).ToList();
+            var casters = CaptureCastingActors(out var kefka);
+            var actionIds = casters.Select(caster => caster.ActionId).ToList();
             RecordRelevantCasts(casters);
-            var kefka = Plugin.ObjectTable
-                .OfType<IBattleChara>()
-                .FirstOrDefault(actor => actor.BaseId == KefkaDataId && actor.IsCasting);
 
             var manaChargeCasting = actionIds.Contains(ManaChargeActionId);
             if (manaChargeCasting && !manaChargeObserved)
@@ -136,9 +131,9 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             }
 
             CaptureStoredReality(actionIds);
-            if (kefka is not null && kefka.CastActionId == ManaReleaseActionId && !releaseActive)
+            if (kefka is not null && kefka.Value.ActionId == ManaReleaseActionId && !releaseActive)
             {
-                BeginRelease(kefka);
+                BeginRelease(kefka.Value);
             }
 
             if (releaseActive)
@@ -148,7 +143,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
                     ResolveRelease();
                 }
 
-                if (kefka is null || kefka.CastActionId != ManaReleaseActionId)
+                if (kefka is null || kefka.Value.ActionId != ManaReleaseActionId)
                 {
                     if (!releaseVfxObserved)
                     {
@@ -162,9 +157,13 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
         catch (Exception ex)
         {
-            safeZone = ManaReleaseSafeZone.Unknown;
-            releaseActive = true;
-            FailRuntime("Mana Release tracker encountered an error; calls will remain Unknown until it is re-enabled.", ex);
+            Reset("Mana Release update failed");
+            Record($"Mana Release update error: {ex.GetType().Name}. State cleared; tracking will retry.");
+            if (!warnedUpdateFailure)
+            {
+                warnedUpdateFailure = true;
+                Plugin.Log.Warning(ex, "Mana Release tracker update failed; state cleared and tracking will retry.");
+            }
         }
     }
 
@@ -212,6 +211,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             isEnabled = false;
             runtimeDisabled = false;
             warnedRuntimeFailure = false;
+            warnedUpdateFailure = false;
             Reset(reason);
         }
     }
@@ -254,7 +254,40 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
     }
 
-    private void RecordRelevantCasts(IReadOnlyList<IBattleChara> casters)
+    private List<CastingActor> CaptureCastingActors(out CastingActor? kefka)
+    {
+        kefka = null;
+        var casters = new List<CastingActor>();
+        foreach (var gameObject in Plugin.ObjectTable)
+        {
+            try
+            {
+                if (gameObject is not IBattleChara actor || !actor.IsCasting)
+                {
+                    continue;
+                }
+
+                var snapshot = new CastingActor(
+                    actor.EntityId,
+                    actor.BaseId,
+                    actor.CastActionId,
+                    actor.Address);
+                casters.Add(snapshot);
+                if (snapshot.BaseId == KefkaDataId)
+                {
+                    kefka = snapshot;
+                }
+            }
+            catch (Exception ex)
+            {
+                Record($"Skipped invalid casting actor: {ex.GetType().Name}.");
+            }
+        }
+
+        return casters;
+    }
+
+    private void RecordRelevantCasts(IReadOnlyList<CastingActor> casters)
     {
         if (!plugin.Configuration.EnableManaReleaseDiagnostics)
         {
@@ -264,7 +297,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         var current = new HashSet<string>(StringComparer.Ordinal);
         foreach (var caster in casters)
         {
-            if (caster.CastActionId is not (
+            if (caster.ActionId is not (
                 ManaChargeActionId or ManaReleaseActionId or
                 LightningRealActionId or LightningFakeFirstActionId or LightningFakeSecondActionId or
                 IceRealActionId or IceFakeFirstActionId or IceFakeSecondActionId))
@@ -272,11 +305,11 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
                 continue;
             }
 
-            var key = $"{caster.EntityId:X8}:{caster.CastActionId}";
+            var key = $"{caster.EntityId:X8}:{caster.ActionId}";
             current.Add(key);
             if (!activeRelevantCasts.Contains(key))
             {
-                Record($"Relevant cast {caster.CastActionId} from actor {caster.EntityId:X8}.");
+                Record($"Relevant cast {caster.ActionId} from actor {caster.EntityId:X8}.");
             }
         }
 
@@ -284,7 +317,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         activeRelevantCasts.UnionWith(current);
     }
 
-    private void BeginRelease(IBattleChara kefka)
+    private void BeginRelease(CastingActor kefka)
     {
         releaseActive = true;
         safeZone = ManaReleaseSafeZone.Unknown;
@@ -385,11 +418,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
 
         vfxHook = null;
-        armed = false;
-        lightningStored = RealityState.Unknown;
-        iceStored = RealityState.Unknown;
-        releaseActive = true;
-        safeZone = ManaReleaseSafeZone.Unknown;
+        Reset("Runtime failure");
         Record($"Error: {message} ({ex.GetType().Name}).");
         if (warnedRuntimeFailure)
         {
@@ -416,6 +445,8 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             }
         }
     }
+
+    private readonly record struct CastingActor(uint EntityId, uint BaseId, uint ActionId, nint Address);
 
     private sealed record VfxObservation(nint TargetAddress, string Path, bool IsLightning, bool IsIce);
 }

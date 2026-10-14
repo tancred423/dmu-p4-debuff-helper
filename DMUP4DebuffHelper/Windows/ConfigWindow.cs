@@ -145,6 +145,12 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetUseMotionStillnessLabels(useMotionStillnessLabels);
         }
 
+        var showP4Vertically = configuration.ShowP4Vertically;
+        if (ImGui.Checkbox("Show P4 vertically", ref showP4Vertically))
+        {
+            plugin.SetShowP4Vertically(showP4Vertically);
+        }
+
         DrawGazeDirectionNamingSetting();
 
         ImGui.BeginDisabled(!configuration.EnableFloodTracking);

@@ -122,32 +122,55 @@ public sealed class HelperWindow : Window, IDisposable
         IReadOnlyList<GazeDisplayAssignment> gazeAssignments,
         ManaReleaseDisplayState? manaReleaseState = null)
     {
-        if (assignments.Count == 0 && gazeAssignments.Count == 0 && manaReleaseState is null)
+        var showManaRelease = plugin.Configuration.EnableExperimentalManaReleaseTracking;
+        if (assignments.Count == 0 && gazeAssignments.Count == 0 && !showManaRelease)
         {
             ImGui.TextDisabled("Waiting for P4 debuffs.");
+            return;
+        }
+
+        if (plugin.Configuration.ShowP4Vertically && ImGui.BeginTable(
+                "##P4VerticalLayout",
+                2,
+                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoSavedSettings))
+        {
+            ImGui.TableSetupColumn("Active", ImGuiTableColumnFlags.WidthStretch, 0.85f);
+            ImGui.TableSetupColumn("Support", ImGuiTableColumnFlags.WidthStretch, 1.15f);
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            DrawSection("Active", assignments, "ActiveVertical", vertically: true);
+            ImGui.TableSetColumnIndex(1);
+            DrawGazeSection("Gazes", gazeAssignments, "GazesVertical");
+            if (showManaRelease)
+            {
+                ImGui.Spacing();
+                DrawManaReleaseSection(manaReleaseState, "Vertical");
+            }
+
+            ImGui.EndTable();
             return;
         }
 
         DrawSection("Active", assignments, "Active");
         ImGui.Spacing();
         DrawGazeSection("Gazes", gazeAssignments, "Gazes");
-        if (manaReleaseState is not null)
+        if (showManaRelease)
         {
             ImGui.Spacing();
-            DrawManaReleaseSection(manaReleaseState);
+            DrawManaReleaseSection(manaReleaseState, "Horizontal");
         }
     }
 
-    private static void DrawManaReleaseSection(ManaReleaseDisplayState state)
+    private static void DrawManaReleaseSection(ManaReleaseDisplayState? state, string idSuffix)
     {
         ImGui.TextColored(GoldColor, "Mana Release");
         var panelStart = ImGui.GetCursorScreenPos();
         var panelWidth = MathF.Max(160.0f, ImGui.GetContentRegionAvail().X);
-        var showLightningRow = state.LightningStored != RealityState.Unknown || state.LightningRelease != RealityState.Unknown;
-        var showIceRow = state.IceStored != RealityState.Unknown || state.IceRelease != RealityState.Unknown;
+        var showLightningRow = state is not null && (state.LightningStored != RealityState.Unknown || state.LightningRelease != RealityState.Unknown);
+        var showIceRow = state is not null && (state.IceStored != RealityState.Unknown || state.IceRelease != RealityState.Unknown);
         var lineCount = (showLightningRow ? 1 : 0)
             + (showIceRow ? 1 : 0)
-            + (state.IsManaReleaseActive ? 1 : 0);
+            + (state?.IsManaReleaseActive == true ? 1 : 0);
         var panelHeight = HelperPadding * 2.0f + Math.Max(1, lineCount) * ImGui.GetTextLineHeightWithSpacing();
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddRectFilled(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelFillColor), 6.0f);
@@ -157,7 +180,7 @@ public sealed class HelperWindow : Window, IDisposable
         var contentLeft = panelStart.X + HelperPadding;
         var contentWidth = panelWidth - HelperPadding * 2.0f;
         if ((showLightningRow || showIceRow) && ImGui.BeginTable(
-                "##ManaReleaseStates",
+                $"##ManaReleaseStates{idSuffix}",
                 2,
                 ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoSavedSettings,
                 new Vector2(contentWidth, 0.0f)))
@@ -166,24 +189,24 @@ public sealed class HelperWindow : Window, IDisposable
             {
                 ImGui.TableNextRow(0.0f, ImGui.GetTextLineHeightWithSpacing());
                 ImGui.TableNextColumn();
-                DrawManaReleaseReality("Lightning 1", state.LightningStored);
+                DrawManaReleaseReality("Lightning 1", state!.LightningStored);
                 ImGui.TableNextColumn();
-                DrawManaReleaseReality("Lightning 2", state.LightningRelease);
+                DrawManaReleaseReality("Lightning 2", state!.LightningRelease);
             }
 
             if (showIceRow)
             {
                 ImGui.TableNextRow(0.0f, ImGui.GetTextLineHeightWithSpacing());
                 ImGui.TableNextColumn();
-                DrawManaReleaseReality("Ice 1", state.IceStored);
+                DrawManaReleaseReality("Ice 1", state!.IceStored);
                 ImGui.TableNextColumn();
-                DrawManaReleaseReality("Ice 2", state.IceRelease);
+                DrawManaReleaseReality("Ice 2", state!.IceRelease);
             }
 
             ImGui.EndTable();
         }
 
-        if (state.IsManaReleaseActive)
+        if (state is { IsManaReleaseActive: true })
         {
             var callout = state.SafeZone switch
             {
@@ -199,7 +222,7 @@ public sealed class HelperWindow : Window, IDisposable
         else if (lineCount == 0)
         {
             ImGui.SetCursorScreenPos(new Vector2(contentLeft, ImGui.GetCursorScreenPos().Y));
-            ImGui.TextDisabled("Waiting for stored mechanics.");
+            ImGui.TextDisabled("Waiting for Mana Release data.");
         }
 
         ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
@@ -864,11 +887,11 @@ public sealed class HelperWindow : Window, IDisposable
 
     private static List<P4DebuffAssignment> GetOrderedAssignments(IReadOnlyList<P4DebuffAssignment> assignments)
     {
-        var ordered = assignments
+        return assignments
             .Where(assignment => assignment.Entry.RemainingTime > 0.0f)
+            .OrderBy(assignment => assignment.Entry.RemainingTime)
+            .Concat(assignments.Where(assignment => assignment.Entry.RemainingTime <= 0.0f))
             .ToList();
-        StableSortByTimerWithTolerance(ordered);
-        return ordered;
     }
 
     private static List<GazeDisplayAssignment> GetRepresentativeGazeAssignments(IReadOnlyList<P4DebuffAssignment> assignments)
@@ -936,13 +959,13 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private void DrawSection(string label, IReadOnlyList<P4DebuffAssignment> assignments, string idSuffix)
+    private void DrawSection(string label, IReadOnlyList<P4DebuffAssignment> assignments, string idSuffix, bool vertically = false)
     {
         ImGui.TextColored(GoldColor, label);
         var panelStart = ImGui.GetCursorScreenPos();
         var availableWidth = MathF.Max(160.0f, ImGui.GetContentRegionAvail().X);
         var panelWidth = availableWidth;
-        var panelHeight = GetAssignmentPanelHeight(assignments, availableWidth);
+        var panelHeight = GetAssignmentPanelHeight(assignments, availableWidth, vertically);
         ImGui.GetWindowDrawList().AddRectFilled(
             panelStart,
             panelStart + new Vector2(panelWidth, panelHeight),
@@ -955,7 +978,7 @@ public sealed class HelperWindow : Window, IDisposable
             6.0f);
 
         ImGui.SetCursorScreenPos(panelStart + new Vector2(HelperPadding, HelperPadding));
-        DrawAssignmentStrip(assignments, availableWidth - HelperPadding * 2.0f, idSuffix);
+        DrawAssignmentStrip(assignments, availableWidth - HelperPadding * 2.0f, idSuffix, vertically);
         ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
     }
 
@@ -1076,7 +1099,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private float GetAssignmentPanelHeight(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth)
+    private float GetAssignmentPanelHeight(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, bool vertically)
     {
         if (assignments.Count == 0)
         {
@@ -1084,6 +1107,12 @@ public sealed class HelperWindow : Window, IDisposable
         }
 
         var rowHeight = GetAssignmentHeight();
+        if (vertically)
+        {
+            return HelperPadding * 2.0f + assignments.Count * rowHeight +
+                Math.Max(0, assignments.Count - 1) * ImGui.GetStyle().ItemSpacing.Y;
+        }
+
         var spacingX = ImGui.GetStyle().ItemSpacing.X * 1.25f;
         var spacingY = ImGui.GetStyle().ItemSpacing.Y;
         var contentWidth = MathF.Max(1.0f, availableWidth - HelperPadding * 2.0f);
@@ -1106,7 +1135,7 @@ public sealed class HelperWindow : Window, IDisposable
         return HelperPadding * 2.0f + rows * rowHeight + MathF.Max(0, rows - 1) * spacingY;
     }
 
-    private void DrawAssignmentStrip(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, string idSuffix)
+    private void DrawAssignmentStrip(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, string idSuffix, bool vertically)
     {
         if (assignments.Count == 0)
         {
@@ -1120,7 +1149,16 @@ public sealed class HelperWindow : Window, IDisposable
         {
             var assignment = assignments[index];
             var itemWidth = GetAssignmentWidth(assignment);
-            if (rowWidth > 0.0f && rowWidth + spacing + itemWidth > availableWidth)
+            if (vertically)
+            {
+                itemWidth = availableWidth;
+            }
+
+            if (vertically && index > 0)
+            {
+                rowWidth = 0.0f;
+            }
+            else if (rowWidth > 0.0f && rowWidth + spacing + itemWidth > availableWidth)
             {
                 rowWidth = 0.0f;
             }

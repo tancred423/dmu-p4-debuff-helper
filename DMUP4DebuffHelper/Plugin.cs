@@ -396,6 +396,12 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetShowP4Vertically(bool enabled)
+    {
+        Configuration.ShowP4Vertically = enabled;
+        SaveConfiguration();
+    }
+
     public void ClearManaReleaseDiagnostics() => manaReleaseTracker.ClearDiagnostics();
 
     public void SetHelperCollapsed(bool collapsed)
@@ -443,7 +449,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 8)
+        if (Configuration.Version >= 9)
         {
             return;
         }
@@ -479,7 +485,12 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.EnableManaReleaseDiagnostics = false;
         }
 
-        Configuration.Version = 8;
+        if (Configuration.Version < 9)
+        {
+            Configuration.ShowP4Vertically = false;
+        }
+
+        Configuration.Version = 9;
         SaveConfiguration();
     }
 
@@ -675,8 +686,8 @@ public sealed class Plugin : IDalamudPlugin
         RefreshPartyGazeAssignments();
         RefreshLocalAssignments();
         UpdatePullTracking();
-        var p4LiveSignal = HasP4LiveSignal();
-        if (p4LiveSignal && !p4SeenThisPull)
+        var p4PhaseSignal = HasP4PhaseSignal();
+        if (p4PhaseSignal && !p4SeenThisPull)
         {
             p4SeenThisPull = true;
             p3BlackHoleTracker.ClearLiveDisplay("P4 detected");
@@ -766,13 +777,18 @@ public sealed class Plugin : IDalamudPlugin
         UpdateCurrentPullDebuffRecords();
     }
 
-    private bool HasP4LiveSignal()
+    private bool HasP4PhaseSignal()
     {
         return currentAssignments.Count > 0 ||
             localAssignments.Count > 0 ||
             currentGazeAssignments.Count > 0 ||
-            currentBossTells.Count > 0 ||
-            manaReleaseTracker.DisplayState is not null;
+            currentBossTells.Count > 0;
+    }
+
+    private bool HasP4DisplaySignal()
+    {
+        return HasP4PhaseSignal() ||
+            (p4SeenThisPull && manaReleaseTracker.DisplayState is not null);
     }
 
     private void ReconcileManaReleaseTracker()
@@ -785,7 +801,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void UpdateDisplayMode()
     {
-        DisplayMode = Configuration.EnableP4Tracking && HasP4LiveSignal()
+        DisplayMode = Configuration.EnableP4Tracking && HasP4DisplaySignal()
             ? DmuHelperDisplayMode.P4Debuffs
             : Configuration.EnableP3Tracking &&
                 (!Configuration.EnableP4Tracking || !p4SeenThisPull) &&

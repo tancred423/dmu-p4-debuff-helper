@@ -11,7 +11,8 @@
 > * The preview now respects your config.
 > * Option to use "OUT/IN" wording instead of "Away/Towards" for Shriek facing direction.
 > * Gaze on you is also shown in active window now to remind you to go in. It will have the label `Go in` with Away/Toward or Out/In direction wording.
-> * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both".
+> * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both". It waits quietly for data until P4 is active and does not interfere with P3.
+> * Optional vertical P4 layout: Active calls stack on the left, with Gazes and Mana Release on the right.
 >
 > <img width="671" height="458" alt="image" src="https://github.com/user-attachments/assets/e2b7f688-84fe-4682-9659-1ceda55aec44" />
 >
