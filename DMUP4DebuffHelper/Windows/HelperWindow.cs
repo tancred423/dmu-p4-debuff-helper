@@ -798,37 +798,25 @@ public sealed class HelperWindow : Window, IDisposable
     {
         var previews = new (uint StatusId, RealityState Reality, ushort TellParam, float Time, string MemberName, int PartyIndex, WoundColor WoundColor)[]
         {
-            (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 6.8f, "Preview Player", 0, WoundColor.White),
-            (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 7.4f, "Preview Player", 0, WoundColor.White),
-            (CursedShriekStatusId, RealityState.Real, 1120, 14.1f, "Preview Player", 0, WoundColor.None),
-            (5546, RealityState.Real, 1120, 10.4f, "Preview Player", 0, WoundColor.None),
-            (5544, RealityState.Fake, 1119, 62.0f, "Preview Player", 0, WoundColor.None),
-            (5548, RealityState.Real, 1122, 18.0f, "Preview Player", 0, WoundColor.None),
-            (5547, RealityState.Fake, 1121, 23.2f, "Preview Player", 0, WoundColor.None),
+            (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 14.3f, "Preview Player", 0, WoundColor.White),
+            (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 14.3f, "Preview Player", 0, WoundColor.White),
+            (5544, RealityState.Fake, 1119, 19.1f, "Preview Player", 0, WoundColor.None),
+            (5546, RealityState.Real, 1120, 19.1f, "Preview Player", 0, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 28.6f, "Preview Player", 0, WoundColor.None),
+            (5547, RealityState.Fake, 1121, 35.0f, "Preview Player", 0, WoundColor.None),
+            (5548, RealityState.Real, 1122, 58.8f, "Preview Player", 0, WoundColor.None),
         };
 
         var assignments = BuildPreviewAssignments(previews);
         if (plugin.Configuration.ShowInferredStackCall)
         {
-            var source = assignments.SingleOrDefault(assignment => assignment.Rule.Id is 5545 or 5544);
-            if (source is not null && Plugin.TryGetInferredStackDurations(
-                    source.InitialRemainingTime,
-                    out var canonicalSourceDuration,
-                    out var inferredDuration))
-            {
-                var elapsedTime = MathF.Max(0.0f, canonicalSourceDuration - source.Entry.RemainingTime);
-                var remainingTime = inferredDuration - elapsedTime;
-                if (remainingTime > 0.0f)
-                {
-                    assignments.Add(CreateInferredStackAssignment(new InferredStackDisplayState(
-                        source.Entry.Key,
-                        source.Entry.MemberKey,
-                        source.Entry.MemberName,
-                        source.Entry.PartyIndex,
-                        remainingTime,
-                        inferredDuration)));
-                }
-            }
+            assignments.Add(CreateInferredStackAssignment(new InferredStackDisplayState(
+                "Preview:InferredStack",
+                "Preview:0",
+                "Preview Player",
+                0,
+                44.3f,
+                75.0f)));
         }
 
         return GetOrderedAssignments(assignments);
@@ -890,10 +878,10 @@ public sealed class HelperWindow : Window, IDisposable
     {
         var previews = new (uint StatusId, RealityState Reality, ushort TellParam, float Time, string MemberName, int PartyIndex, WoundColor WoundColor)[]
         {
-            (CursedShriekStatusId, RealityState.Real, 1120, 14.1f, "Preview Player", 0, WoundColor.None),
-            (CursedShriekStatusId, RealityState.Real, 1120, 14.4f, "Short Gaze B", 2, WoundColor.None),
-            (CursedShriekStatusId, RealityState.Fake, 1119, 17.8f, "Long Gaze A", 3, WoundColor.None),
-            (CursedShriekStatusId, RealityState.Fake, 1119, 18.1f, "Long Gaze B", 4, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 28.6f, "Preview Player", 0, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Real, 1120, 28.9f, "Short Gaze B", 2, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Fake, 1119, 52.2f, "Long Gaze A", 3, WoundColor.None),
+            (CursedShriekStatusId, RealityState.Fake, 1119, 52.5f, "Long Gaze B", 4, WoundColor.None),
         };
 
         var gazes = BuildPreviewAssignments(previews);
