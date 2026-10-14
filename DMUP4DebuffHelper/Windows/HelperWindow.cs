@@ -138,7 +138,12 @@ public sealed class HelperWindow : Window, IDisposable
             ImGui.TableSetupColumn("Support", ImGuiTableColumnFlags.WidthStretch, 1.15f);
             ImGui.TableNextRow();
             ImGui.TableSetColumnIndex(0);
-            DrawSection("Active", assignments, "ActiveVertical", vertically: true);
+            DrawSection(
+                "Active",
+                assignments,
+                "ActiveVertical",
+                vertically: true,
+                asTable: plugin.Configuration.DisplayP4AsTable);
             ImGui.TableSetColumnIndex(1);
             DrawGazeSection("Gazes", gazeAssignments, "GazesVertical");
             if (showManaRelease)
@@ -959,13 +964,21 @@ public sealed class HelperWindow : Window, IDisposable
         }
     }
 
-    private void DrawSection(string label, IReadOnlyList<P4DebuffAssignment> assignments, string idSuffix, bool vertically = false)
+    private void DrawSection(
+        string label,
+        IReadOnlyList<P4DebuffAssignment> assignments,
+        string idSuffix,
+        bool vertically = false,
+        bool asTable = false)
     {
+        var useTable = vertically && asTable;
         ImGui.TextColored(GoldColor, label);
         var panelStart = ImGui.GetCursorScreenPos();
         var availableWidth = MathF.Max(160.0f, ImGui.GetContentRegionAvail().X);
         var panelWidth = availableWidth;
-        var panelHeight = GetAssignmentPanelHeight(assignments, availableWidth, vertically);
+        var panelHeight = useTable
+            ? GetAssignmentTablePanelHeight(assignments)
+            : GetAssignmentPanelHeight(assignments, availableWidth, vertically);
         ImGui.GetWindowDrawList().AddRectFilled(
             panelStart,
             panelStart + new Vector2(panelWidth, panelHeight),
@@ -978,7 +991,15 @@ public sealed class HelperWindow : Window, IDisposable
             6.0f);
 
         ImGui.SetCursorScreenPos(panelStart + new Vector2(HelperPadding, HelperPadding));
-        DrawAssignmentStrip(assignments, availableWidth - HelperPadding * 2.0f, idSuffix, vertically);
+        if (useTable)
+        {
+            DrawAssignmentTable(assignments, availableWidth - HelperPadding * 2.0f, idSuffix);
+        }
+        else
+        {
+            DrawAssignmentStrip(assignments, availableWidth - HelperPadding * 2.0f, idSuffix, vertically);
+        }
+
         ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
     }
 
@@ -1135,6 +1156,77 @@ public sealed class HelperWindow : Window, IDisposable
         return HelperPadding * 2.0f + rows * rowHeight + MathF.Max(0, rows - 1) * spacingY;
     }
 
+    private static float GetAssignmentTablePanelHeight(IReadOnlyList<P4DebuffAssignment> assignments)
+    {
+        var rows = Math.Max(1, assignments.Count);
+        var rowHeight = GetAssignmentTableRowHeight();
+        return HelperPadding * 2.0f + rows * rowHeight;
+    }
+
+    private static float GetAssignmentTableRowHeight()
+    {
+        return MathF.Max(AssignmentIconSize, ImGui.GetTextLineHeight()) + ImGui.GetStyle().CellPadding.Y * 2.0f;
+    }
+
+    private void DrawAssignmentTable(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, string idSuffix)
+    {
+        if (assignments.Count == 0)
+        {
+            ImGui.TextDisabled("-");
+            return;
+        }
+
+        if (!ImGui.BeginTable(
+                $"##P4ActiveAssignments{idSuffix}",
+                3,
+                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoSavedSettings,
+                new Vector2(availableWidth, 0.0f)))
+        {
+            return;
+        }
+
+        var style = ImGui.GetStyle();
+        ImGui.TableSetupColumn(
+            "Timer",
+            ImGuiTableColumnFlags.WidthFixed,
+            ImGui.CalcTextSize("99.9s").X + style.CellPadding.X * 2.0f);
+        ImGui.TableSetupColumn(
+            "Icon",
+            ImGuiTableColumnFlags.WidthFixed,
+            AssignmentIconSize + style.CellPadding.X * 2.0f);
+        ImGui.TableSetupColumn("Callout", ImGuiTableColumnFlags.WidthStretch);
+
+        var rowHeight = GetAssignmentTableRowHeight();
+        foreach (var assignment in assignments)
+        {
+            var tooltip = FormatAssignmentTooltip(assignment);
+            ImGui.TableNextRow(0.0f, rowHeight);
+
+            ImGui.TableNextColumn();
+            ImGui.TextColored(TimerTextColor, FormatRemainingTime(assignment.Entry.RemainingTime));
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(tooltip);
+            }
+
+            ImGui.TableNextColumn();
+            DrawStatusIconWithBorder(
+                assignment.Entry.IconId,
+                AssignmentIconSize,
+                GetAssignmentBorderColor(assignment),
+                tooltip);
+
+            ImGui.TableNextColumn();
+            ImGui.TextColored(GetAssignmentLabelColor(assignment), GetRealityLine(assignment));
+            if (ImGui.IsItemHovered())
+            {
+                ImGui.SetTooltip(tooltip);
+            }
+        }
+
+        ImGui.EndTable();
+    }
+
     private void DrawAssignmentStrip(IReadOnlyList<P4DebuffAssignment> assignments, float availableWidth, string idSuffix, bool vertically)
     {
         if (assignments.Count == 0)
@@ -1183,13 +1275,7 @@ public sealed class HelperWindow : Window, IDisposable
         var timerSize = ImGui.CalcTextSize(timerText);
         var start = ImGui.GetCursorPos();
         var labelColor = GetAssignmentLabelColor(assignment);
-        var borderColor = assignment.FloodSide != FloodSide.None
-            ? GetFloodSideColor(assignment.FloodSide)
-            : assignment.Reality == RealityState.Fake
-                ? FakeColor
-                : assignment.Reality == RealityState.Real
-                    ? GoldColor
-                    : UnknownColor;
+        var borderColor = GetAssignmentBorderColor(assignment);
 
         ImGui.BeginGroup();
         ImGui.SetCursorPosX(start.X + MathF.Max(0.0f, (width - labelSize.X) * 0.5f));
@@ -1204,6 +1290,17 @@ public sealed class HelperWindow : Window, IDisposable
         {
             ImGui.SetTooltip(FormatAssignmentTooltip(assignment));
         }
+    }
+
+    private static Vector4 GetAssignmentBorderColor(P4DebuffAssignment assignment)
+    {
+        return assignment.FloodSide != FloodSide.None
+            ? GetFloodSideColor(assignment.FloodSide)
+            : assignment.Reality == RealityState.Fake
+                ? FakeColor
+                : assignment.Reality == RealityState.Real
+                    ? GoldColor
+                    : UnknownColor;
     }
 
     private static void DrawStatusIconWithBorder(uint iconId, float iconSize, Vector4 borderColor, string tooltip)

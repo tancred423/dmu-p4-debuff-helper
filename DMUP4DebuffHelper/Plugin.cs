@@ -402,6 +402,12 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetDisplayP4AsTable(bool enabled)
+    {
+        Configuration.DisplayP4AsTable = enabled;
+        SaveConfiguration();
+    }
+
     public void ClearManaReleaseDiagnostics() => manaReleaseTracker.ClearDiagnostics();
 
     public void SetHelperCollapsed(bool collapsed)
@@ -449,7 +455,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 9)
+        if (Configuration.Version >= 10)
         {
             return;
         }
@@ -490,7 +496,12 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.ShowP4Vertically = false;
         }
 
-        Configuration.Version = 9;
+        if (Configuration.Version < 10)
+        {
+            Configuration.DisplayP4AsTable = false;
+        }
+
+        Configuration.Version = 10;
         SaveConfiguration();
     }
 

@@ -151,6 +151,15 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetShowP4Vertically(showP4Vertically);
         }
 
+        ImGui.BeginDisabled(!configuration.ShowP4Vertically);
+        var displayP4AsTable = configuration.DisplayP4AsTable;
+        if (ImGui.Checkbox("Display as table", ref displayP4AsTable))
+        {
+            plugin.SetDisplayP4AsTable(displayP4AsTable);
+        }
+
+        ImGui.EndDisabled();
+
         DrawGazeDirectionNamingSetting();
 
         ImGui.BeginDisabled(!configuration.EnableFloodTracking);
