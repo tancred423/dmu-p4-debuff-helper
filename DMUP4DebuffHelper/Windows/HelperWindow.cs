@@ -68,7 +68,7 @@ public sealed class HelperWindow : Window, IDisposable
         {
             case DmuHelperDisplayMode.P4Debuffs:
                 DrawP4View(
-                    GetOrderedAssignments(plugin.CurrentAssignments),
+                    GetDisplayAssignments(plugin.CurrentAssignments, plugin.InferredStackDisplayState),
                     GetOrderedAssignments(plugin.CurrentGazeAssignments),
                     plugin.ManaReleaseDisplayState,
                     isPreview: false);
@@ -807,7 +807,69 @@ public sealed class HelperWindow : Window, IDisposable
             (5547, RealityState.Fake, 1121, 23.2f, "Preview Player", 0, WoundColor.None),
         };
 
-        return GetOrderedAssignments(BuildPreviewAssignments(previews));
+        var assignments = BuildPreviewAssignments(previews);
+        if (plugin.Configuration.ShowInferredStackCall)
+        {
+            var source = assignments.SingleOrDefault(assignment => assignment.Rule.Id is 5545 or 5544);
+            if (source is not null && Plugin.TryGetInferredStackDurations(
+                    source.InitialRemainingTime,
+                    out var canonicalSourceDuration,
+                    out var inferredDuration))
+            {
+                var elapsedTime = MathF.Max(0.0f, canonicalSourceDuration - source.Entry.RemainingTime);
+                var remainingTime = inferredDuration - elapsedTime;
+                if (remainingTime > 0.0f)
+                {
+                    assignments.Add(CreateInferredStackAssignment(new InferredStackDisplayState(
+                        source.Entry.Key,
+                        source.Entry.MemberKey,
+                        source.Entry.MemberName,
+                        source.Entry.PartyIndex,
+                        remainingTime,
+                        inferredDuration)));
+                }
+            }
+        }
+
+        return GetOrderedAssignments(assignments);
+    }
+
+    private List<P4DebuffAssignment> GetDisplayAssignments(
+        IReadOnlyList<P4DebuffAssignment> assignments,
+        InferredStackDisplayState? inferredStackState)
+    {
+        var displayedAssignments = assignments.ToList();
+        if (inferredStackState is not null)
+        {
+            displayedAssignments.Add(CreateInferredStackAssignment(inferredStackState));
+        }
+
+        return GetOrderedAssignments(displayedAssignments);
+    }
+
+    private P4DebuffAssignment CreateInferredStackAssignment(InferredStackDisplayState state)
+    {
+        var rule = Plugin.WatchedStatuses[5545];
+        var entry = new PartyStatusEntry(
+            $"InferredStack:{state.SourceKey}",
+            state.MemberKey,
+            state.MemberName,
+            state.PartyIndex,
+            5545,
+            "Inferred Stack",
+            plugin.GetStatusIconId(5545),
+            state.RemainingTime,
+            true,
+            rule.SortOrder,
+            DateTime.UtcNow);
+        return new P4DebuffAssignment(
+            entry,
+            rule,
+            RealityState.Real,
+            null,
+            "Stack with your assigned group. This complementary timing is inferred from your Water or Lightning timer.",
+            InitialRemainingTime: state.InitialRemainingTime,
+            IsInferredStack: true);
     }
 
     private ManaReleaseDisplayState? GetPreviewManaReleaseState()
@@ -1294,6 +1356,11 @@ public sealed class HelperWindow : Window, IDisposable
 
     private static Vector4 GetAssignmentBorderColor(P4DebuffAssignment assignment)
     {
+        if (assignment.IsInferredStack)
+        {
+            return GoldColor;
+        }
+
         return assignment.FloodSide != FloodSide.None
             ? GetFloodSideColor(assignment.FloodSide)
             : assignment.Reality == RealityState.Fake
@@ -1394,6 +1461,11 @@ public sealed class HelperWindow : Window, IDisposable
     private string FormatAssignmentTooltip(P4DebuffAssignment assignment)
     {
         var timerText = FormatRemainingTime(assignment.Entry.RemainingTime);
+        if (assignment.IsInferredStack)
+        {
+            return $"{assignment.Entry.MemberName}\nInferred Stack\nTimer: {timerText}\n{GetRealityLine(assignment)}\n{assignment.Instruction}";
+        }
+
         var realityLine = assignment.Rule.Id == CursedShriekStatusId
             ? FormatLocalGazeCall(assignment.Reality)
             : assignment.Rule.Group != P4MechanicGroup.Flood && assignment.Reality == RealityState.Unknown
@@ -1428,6 +1500,11 @@ public sealed class HelperWindow : Window, IDisposable
 
     private string GetRealityLine(P4DebuffAssignment assignment)
     {
+        if (assignment.IsInferredStack)
+        {
+            return $"Stack{GetStackSpreadTimingSuffix(assignment)}";
+        }
+
         if (assignment.Rule.Id == CursedShriekStatusId)
         {
             return FormatLocalGazeCall(assignment.Reality);

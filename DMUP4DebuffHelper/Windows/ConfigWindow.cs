@@ -133,6 +133,14 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetShowStackSpreadTiming(showStackSpreadTiming);
         }
 
+        var showInferredStackCall = configuration.ShowInferredStackCall;
+        if (ImGui.Checkbox("Show inferred Stack call", ref showInferredStackCall))
+        {
+            plugin.SetShowInferredStackCall(showInferredStackCall);
+        }
+
+        ImGui.TextDisabled("Adds the other-timing Stack call from your Water or Lightning timer.");
+
         var showP4RealityLabels = configuration.ShowP4RealityLabels;
         if (ImGui.Checkbox("Show Real/Fake in P4 callouts", ref showP4RealityLabels))
         {

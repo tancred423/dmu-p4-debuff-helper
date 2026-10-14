@@ -30,6 +30,9 @@ public sealed class Plugin : IDalamudPlugin
     private const uint DmuTerritoryId = 1363;
     private const uint BossTellStatusId = 2056;
     private const uint CursedShriekStatusId = 5543;
+    private const uint CompressedWaterStatusId = 5545;
+    private const uint ForkedLightningStatusId = 5544;
+    private const float InferredStackTimerToleranceSeconds = 3.0f;
     private const int QueuedChatDelayMs = 200;
     private const float StatusTimerAnchorRefreshThreshold = 0.05f;
     private static readonly TimeSpan BossTellFreshness = TimeSpan.FromSeconds(20);
@@ -98,6 +101,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly Dictionary<string, StatusTimerAnchor> statusTimerAnchors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> activeDebuffRecordIndexes = new(StringComparer.Ordinal);
     private readonly HashSet<string> activeDebuffKeysLastFrame = new(StringComparer.Ordinal);
+    private readonly HashSet<string> activeInferredStackSourceKeysLastFrame = new(StringComparer.Ordinal);
     private readonly HashSet<string> activeBossTellKeysLastFrame = new(StringComparer.Ordinal);
     private readonly HashSet<string> registeredCommands = new(StringComparer.OrdinalIgnoreCase);
     private readonly Queue<string> queuedPartyChatMessages = [];
@@ -106,6 +110,7 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime nextQueuedPartyChatMessageAtUtc = DateTime.MinValue;
     private float lastKnownPullElapsedSeconds;
     private bool p4SeenThisPull;
+    private InferredStackTrackerState? inferredStackTrackerState;
 
     public Configuration Configuration { get; }
 
@@ -130,6 +135,28 @@ public sealed class Plugin : IDalamudPlugin
     public P3LimitCutTracker P3LimitCut => p3LimitCutTracker;
 
     public ManaReleaseDisplayState? ManaReleaseDisplayState => manaReleaseTracker.DisplayState;
+
+    public InferredStackDisplayState? InferredStackDisplayState
+    {
+        get
+        {
+            if (inferredStackTrackerState is null)
+            {
+                return null;
+            }
+
+            var remainingTime = (float)(inferredStackTrackerState.ExpiresAtUtc - DateTime.UtcNow).TotalSeconds;
+            return remainingTime > 0.0f
+                ? new InferredStackDisplayState(
+                    inferredStackTrackerState.SourceKey,
+                    inferredStackTrackerState.MemberKey,
+                    inferredStackTrackerState.MemberName,
+                    inferredStackTrackerState.PartyIndex,
+                    remainingTime,
+                    inferredStackTrackerState.InitialRemainingTime)
+                : null;
+        }
+    }
 
     public IReadOnlyList<ManaReleaseDiagnosticEntry> ManaReleaseDiagnostics => manaReleaseTracker.Diagnostics;
 
@@ -408,6 +435,17 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetShowInferredStackCall(bool enabled)
+    {
+        Configuration.ShowInferredStackCall = enabled;
+        if (!enabled)
+        {
+            ClearInferredStackState();
+        }
+
+        SaveConfiguration();
+    }
+
     public void ClearManaReleaseDiagnostics() => manaReleaseTracker.ClearDiagnostics();
 
     public void SetHelperCollapsed(bool collapsed)
@@ -455,7 +493,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 10)
+        if (Configuration.Version >= 11)
         {
             return;
         }
@@ -501,7 +539,12 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.DisplayP4AsTable = false;
         }
 
-        Configuration.Version = 10;
+        if (Configuration.Version < 11)
+        {
+            Configuration.ShowInferredStackCall = false;
+        }
+
+        Configuration.Version = 11;
         SaveConfiguration();
     }
 
@@ -694,6 +737,7 @@ public sealed class Plugin : IDalamudPlugin
 
         RefreshBossTellSnapshots();
         RefreshAssignments();
+        RefreshInferredStackState(now);
         RefreshPartyGazeAssignments();
         RefreshLocalAssignments();
         UpdatePullTracking();
@@ -733,6 +777,7 @@ public sealed class Plugin : IDalamudPlugin
         capturedFloodWounds.Clear();
         statusTimerAnchors.Clear();
         activeBossTellKeysLastFrame.Clear();
+        ClearInferredStackState();
         if (manaReleaseTracker.DisplayState is not null)
         {
             manaReleaseTracker.Reset(snapshotReason);
@@ -759,6 +804,7 @@ public sealed class Plugin : IDalamudPlugin
         capturedDebuffStates.Clear();
         capturedFloodWounds.Clear();
         statusTimerAnchors.Clear();
+        ClearInferredStackState();
         if (manaReleaseTracker.DisplayState is not null)
         {
             manaReleaseTracker.Reset(snapshotReason);
@@ -799,7 +845,7 @@ public sealed class Plugin : IDalamudPlugin
     private bool HasP4DisplaySignal()
     {
         return HasP4PhaseSignal() ||
-            (p4SeenThisPull && manaReleaseTracker.DisplayState is not null);
+            (p4SeenThisPull && (manaReleaseTracker.DisplayState is not null || InferredStackDisplayState is not null));
     }
 
     private void ReconcileManaReleaseTracker()
@@ -931,6 +977,89 @@ public sealed class Plugin : IDalamudPlugin
         }
 
         UpdateCurrentPullDebuffRecords();
+    }
+
+    private void RefreshInferredStackState(DateTime now)
+    {
+        if (!Configuration.ShowInferredStackCall)
+        {
+            ClearInferredStackState();
+            return;
+        }
+
+        if (inferredStackTrackerState is not null && inferredStackTrackerState.ExpiresAtUtc <= now)
+        {
+            inferredStackTrackerState = null;
+        }
+
+        var sources = currentAssignments
+            .Where(assignment => assignment.Rule.Id is CompressedWaterStatusId or ForkedLightningStatusId)
+            .ToList();
+        var activeSourceKeys = sources
+            .Select(assignment => assignment.Entry.Key)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (sources.Count == 1 && !activeInferredStackSourceKeysLastFrame.Contains(sources[0].Entry.Key))
+        {
+            var source = sources[0];
+            if (TryGetInferredStackDurations(
+                    source.InitialRemainingTime,
+                    out var canonicalSourceDuration,
+                    out var inferredDuration))
+            {
+                var elapsedTime = MathF.Max(0.0f, canonicalSourceDuration - source.Entry.RemainingTime);
+                var remainingTime = inferredDuration - elapsedTime;
+                if (remainingTime > 0.0f)
+                {
+                    inferredStackTrackerState = new InferredStackTrackerState(
+                        source.Entry.Key,
+                        source.Entry.MemberKey,
+                        source.Entry.MemberName,
+                        source.Entry.PartyIndex,
+                        inferredDuration,
+                        now.AddSeconds(remainingTime));
+                }
+            }
+        }
+
+        activeInferredStackSourceKeysLastFrame.Clear();
+        foreach (var key in activeSourceKeys)
+        {
+            activeInferredStackSourceKeysLastFrame.Add(key);
+        }
+    }
+
+    internal static bool TryGetInferredStackDurations(
+        float capturedDuration,
+        out float canonicalSourceDuration,
+        out float inferredDuration)
+    {
+        var timings = new (float Source, float Inferred)[]
+        {
+            (36.0f, 60.0f),
+            (51.0f, 75.0f),
+            (60.0f, 36.0f),
+            (75.0f, 51.0f),
+        };
+        var nearest = timings
+            .OrderBy(timing => MathF.Abs(timing.Source - capturedDuration))
+            .First();
+        if (MathF.Abs(nearest.Source - capturedDuration) > InferredStackTimerToleranceSeconds)
+        {
+            canonicalSourceDuration = 0.0f;
+            inferredDuration = 0.0f;
+            return false;
+        }
+
+        canonicalSourceDuration = nearest.Source;
+        inferredDuration = nearest.Inferred;
+        return true;
+    }
+
+    private void ClearInferredStackState()
+    {
+        inferredStackTrackerState = null;
+        activeInferredStackSourceKeysLastFrame.Clear();
     }
 
     private void RefreshLocalAssignments()
@@ -1343,6 +1472,7 @@ public sealed class Plugin : IDalamudPlugin
         capturedFloodWounds.Clear();
         statusTimerAnchors.Clear();
         activeBossTellKeysLastFrame.Clear();
+        ClearInferredStackState();
         ResetPullState();
         p4SeenThisPull = false;
         UpdateDisplayMode();
@@ -1427,6 +1557,7 @@ public sealed class Plugin : IDalamudPlugin
         activeDebuffRecordIndexes.Clear();
         activeDebuffKeysLastFrame.Clear();
         activeBossTellKeysLastFrame.Clear();
+        ClearInferredStackState();
         pullStartedAtUtc = null;
         lastKnownPullElapsedSeconds = 0.0f;
     }
@@ -1492,4 +1623,12 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private sealed record StatusTimerAnchor(float SourceRemainingTime, DateTime SeenAtUtc);
+
+    private sealed record InferredStackTrackerState(
+        string SourceKey,
+        string MemberKey,
+        string MemberName,
+        int PartyIndex,
+        float InitialRemainingTime,
+        DateTime ExpiresAtUtc);
 }

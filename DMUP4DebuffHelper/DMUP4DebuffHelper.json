@@ -5,7 +5,7 @@
   "DownloadCount": 0,
   "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
   "Description": "Shows configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
-  "Changelog": "Fixes Mana Release errors from suppressing P3, restores untimed Flood vulnerability callouts, adds an optional vertical P4 layout, and shows Mana Release waiting status while P4 data is active.",
+  "Changelog": "Adds an optional inferred Stack call for the complementary Water/Lightning timing and an optional table layout for vertical P4 Active callouts.",
   "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
   "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
   "ApplicableVersion": "any",

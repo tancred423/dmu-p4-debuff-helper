@@ -317,7 +317,16 @@ public sealed record P4DebuffAssignment(
     string Instruction,
     WoundColor WoundColor = WoundColor.None,
     FloodSide FloodSide = FloodSide.None,
-    float InitialRemainingTime = 0.0f);
+    float InitialRemainingTime = 0.0f,
+    bool IsInferredStack = false);
+
+public sealed record InferredStackDisplayState(
+    string SourceKey,
+    string MemberKey,
+    string MemberName,
+    int PartyIndex,
+    float RemainingTime,
+    float InitialRemainingTime);
 
 public sealed record CapturedDebuffState(
     RealityState Reality,
