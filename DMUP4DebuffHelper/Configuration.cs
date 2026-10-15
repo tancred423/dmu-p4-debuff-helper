@@ -7,7 +7,7 @@ namespace DMUP4DebuffHelper;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 12;
+    public int Version { get; set; } = 13;
 
     // Retained for migrating configurations saved before the instance-only option.
     public bool ShowHelper { get; set; } = true;
@@ -49,6 +49,8 @@ public sealed class Configuration : IPluginConfiguration
     public bool ShowWoundDebuffsInActive { get; set; } = true;
 
     public bool ColorAccelerationBombCalls { get; set; }
+
+    public bool EnableP4Logging { get; set; }
 
     public BlackHoleStrategyKind SelectedBlackHoleStrategy { get; set; } = BlackHoleStrategyKind.Standard;
 

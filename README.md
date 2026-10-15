@@ -3,7 +3,8 @@
 >
 > This fork adds the following configurations and additions:
 > * P3 and P4 tracking can be disabled completely in case you just need P4 for example.
-> * Flood tracking can be disabled to declutter the information as this mech is very easy. Just hides the Wound and AF/BD debuffs.
+> * Flood tracking can be hidden to declutter the information as this mech is very easy. Just hides the Wound and AF/BD debuffs.
+> * Can also just hide Wound debuffs and only keep AF/BD debuffs with "Go Black/Blue" callout.
 > * Flood terminology: Use "Blue/Purple" instead of "Black/White" and "Blue Vuln/Purple Vuln" instead of "Black Wound/White Wound" to use the in game colors instead of in game names.
 > * Option to add "(Short)/(Long)" to Stack/Spread and personal Gaze callouts. Stack/Spread debuffs < 55s are marked as short and > 55s are long; the first Gaze cohort is short and the second is long.
 > * Option to hide the "Real:/Fake:" labels from the debuffs as the debuffs already say what you have to do. E. g. the Spread debuff shows "Stack" if fake so no need to display "Fake:".
@@ -15,6 +16,7 @@
 > * Optional vertical P4 layout: Active calls stack on the left, with Gazes and Mana Release on the right.
 > * Opt-in P4 reminder checklist above Active: shows your current short/long Bomb, Stack/Spread, and Gaze assignments without timers.
 > * Wound rows can be hidden from Active without disabling Flood destination guidance.
+> * Opt-in P4 session logging records your resolved personal assignments, both gaze cohorts, and Mana Release conclusion in memory for review after wipes or leaving the instance.
 > * Acceleration Bomb callouts always use uppercase MOVE/MOTION/STOP/STILLNESS, with an opt-in green/red color treatment.
 > * Optional referred stack call. If you got short stack/spread a long stack will be added too and vice versa.
 >

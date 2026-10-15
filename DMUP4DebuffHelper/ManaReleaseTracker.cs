@@ -131,6 +131,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             }
 
             CaptureStoredReality(actionIds);
+            PublishLogState();
             if (kefka is not null && kefka.Value.ActionId == ManaReleaseActionId && !releaseActive)
             {
                 BeginRelease(kefka.Value);
@@ -323,6 +324,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         safeZone = ManaReleaseSafeZone.Unknown;
         releaseKefkaAddress = kefka.Address;
         Record($"Mana Release (47781) detected from actor {kefka.EntityId:X8}.");
+        PublishLogState();
     }
 
     private void DrainObservations()
@@ -363,6 +365,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         {
             safeZone = ManaReleaseSafeZone.Unknown;
             Record("Mana Release resolved as Unknown: stored data missing.");
+            PublishLogState();
             return;
         }
 
@@ -376,6 +379,15 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             _ => ManaReleaseSafeZone.None,
         };
         Record($"Mana Release resolved: Lightning fake={finalLightningFake}, Ice fake={finalIceFake}, safe={safeZone}.");
+        PublishLogState();
+    }
+
+    private void PublishLogState()
+    {
+        if (DisplayState is { } state)
+        {
+            plugin.ObserveManaReleaseForLog(state);
+        }
     }
 
     private nint OnActorVfxCreate(byte* path, nint targetAddress, nint a3, float a4, byte a5, ushort a6, byte a7)

@@ -920,11 +920,6 @@ public sealed class HelperWindow : Window, IDisposable
                 continue;
             }
 
-            if (rule.Group == P4MechanicGroup.Flood && !plugin.Configuration.EnableFloodTracking)
-            {
-                continue;
-            }
-
             var entry = new PartyStatusEntry(
                 $"Preview:{preview.PartyIndex}:{preview.StatusId}",
                 $"Preview:{preview.PartyIndex}",

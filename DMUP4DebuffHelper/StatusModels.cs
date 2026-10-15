@@ -361,7 +361,9 @@ public sealed record P4DebuffRecord(
     float RemainingTimeAtCapture,
     string Instruction,
     WoundColor WoundColor = WoundColor.None,
-    FloodSide FloodSide = FloodSide.None);
+    FloodSide FloodSide = FloodSide.None,
+    float InitialRemainingTime = 0.0f,
+    P4TimingBucket TimingBucket = P4TimingBucket.Unknown);
 
 public sealed record P4PullSnapshot(
     DateTime CapturedAtUtc,
@@ -380,3 +382,21 @@ public sealed record ManaReleaseDisplayState(
     ManaReleaseSafeZone SafeZone);
 
 public sealed record ManaReleaseDiagnosticEntry(DateTime TimestampUtc, string Message);
+
+public sealed record P4GazeLogRecord(P4TimingBucket TimingBucket, RealityState Reality);
+
+public sealed record P4ManaReleaseLogRecord(
+    RealityState Lightning1,
+    RealityState Lightning2,
+    RealityState Ice1,
+    RealityState Ice2,
+    ManaReleaseSafeZone Result,
+    bool HasData);
+
+public sealed record P4LogPullSnapshot(
+    DateTime CapturedAtUtc,
+    string Reason,
+    float CombatElapsedSeconds,
+    IReadOnlyList<P4DebuffRecord> Assignments,
+    IReadOnlyList<P4GazeLogRecord> Gazes,
+    P4ManaReleaseLogRecord? ManaRelease);

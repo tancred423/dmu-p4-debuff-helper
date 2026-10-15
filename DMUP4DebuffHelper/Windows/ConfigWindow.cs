@@ -50,6 +50,12 @@ public sealed class ConfigWindow : Window, IDisposable
             ImGui.EndTabItem();
         }
 
+        if (configuration.EnableP4Logging && ImGui.BeginTabItem("P4 Log"))
+        {
+            DrawP4LogTab();
+            ImGui.EndTabItem();
+        }
+
         if (configuration.EnableManaReleaseDiagnostics && ImGui.BeginTabItem("Diagnostics"))
         {
             DrawManaReleaseDiagnosticsTab();
@@ -120,15 +126,6 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         ImGui.BeginDisabled(!configuration.EnableP4Tracking);
-        var enableFloodTracking = configuration.EnableFloodTracking;
-        if (ImGui.Checkbox("Track Flood debuffs", ref enableFloodTracking))
-        {
-            plugin.SetEnableFloodTracking(enableFloodTracking);
-        }
-
-        ImGui.TextDisabled("Tracks Allagan Field, Beyond Death, Black Wound, and White Wound.");
-
-        ImGui.BeginDisabled(!configuration.EnableFloodTracking);
         var showWoundDebuffsInActive = configuration.ShowWoundDebuffsInActive;
         if (ImGui.Checkbox("Show Wound in Active", ref showWoundDebuffsInActive))
         {
@@ -136,7 +133,13 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         ImGui.TextDisabled("Hides only the Wound row; Flood destination calls still use your Wound.");
-        ImGui.EndDisabled();
+
+        var enableP4Logging = configuration.EnableP4Logging;
+        if (ImGui.Checkbox("Enable P4 logging", ref enableP4Logging))
+        {
+            plugin.SetEnableP4Logging(enableP4Logging);
+        }
+        ImGui.TextDisabled("Keeps a player-focused history in memory until the plugin unloads.");
 
         var showStackSpreadTiming = configuration.ShowStackSpreadTiming;
         if (ImGui.Checkbox("Show short/long for stack/spread and gaze", ref showStackSpreadTiming))
@@ -195,9 +198,7 @@ public sealed class ConfigWindow : Window, IDisposable
 
         DrawGazeDirectionNamingSetting();
 
-        ImGui.BeginDisabled(!configuration.EnableFloodTracking);
         DrawFloodDestinationNamingSetting();
-        ImGui.EndDisabled();
 
         ImGui.Separator();
         ImGui.TextColored(FakeTextColor, "Experimental");
@@ -224,6 +225,124 @@ public sealed class ConfigWindow : Window, IDisposable
         ImGui.TextWrapped("P3 Black Hole appears while assignment data is detected, then disappears when that information is no longer active.");
         ImGui.TextWrapped("P4 debuffs appear automatically when P4 tracking is enabled and known P4 debuffs or boss tell status 2056 are detected.");
     }
+
+    private void DrawP4LogTab()
+    {
+        ImGui.TextUnformatted("P4 session log");
+        ImGui.TextDisabled("Stored only in memory. Completed pulls remain until the plugin unloads.");
+
+        if (plugin.CurrentP4Log is { } current)
+        {
+            DrawP4LogPull(current, "Current P4 log", "Current", true);
+        }
+
+        var history = plugin.P4LogHistory;
+        for (var i = history.Count - 1; i >= 0; i--)
+        {
+            DrawP4LogPull(history[i], $"P4 Log {i + 1}", $"Completed{i}", false);
+        }
+
+        if (plugin.CurrentP4Log is null && history.Count == 0)
+        {
+            ImGui.TextDisabled("No logged P4 pull yet.");
+        }
+    }
+
+    private void DrawP4LogPull(P4LogPullSnapshot snapshot, string title, string id, bool open)
+    {
+        var flags = open ? ImGuiTreeNodeFlags.DefaultOpen : ImGuiTreeNodeFlags.None;
+        if (!ImGui.CollapsingHeader($"{title} - {FormatCombatTimer(snapshot.CombatElapsedSeconds)}###P4Log{id}", flags))
+        {
+            return;
+        }
+
+        ImGui.TextDisabled($"{snapshot.Reason} - {snapshot.CapturedAtUtc:HH:mm:ss} UTC");
+        ImGui.TextUnformatted("Assignments");
+        if (snapshot.Assignments.Count == 0)
+        {
+            ImGui.TextDisabled("No personal assignments captured.");
+        }
+        else
+        {
+            foreach (var record in snapshot.Assignments.OrderBy(record => record.SeenAtUtc))
+            {
+                ImGui.BulletText(FormatLogAssignment(record));
+            }
+        }
+
+        ImGui.TextUnformatted("Gazes");
+        foreach (var gaze in snapshot.Gazes.OrderBy(gaze => gaze.TimingBucket))
+        {
+            ImGui.BulletText($"{gaze.TimingBucket} Gaze: {FormatGazeReality(gaze.Reality)}");
+        }
+
+        if (snapshot.ManaRelease is { } mana)
+        {
+            ImGui.TextUnformatted("Mana Release");
+            ImGui.BulletText($"Lightning 1: {FormatReality(mana.Lightning1)}");
+            ImGui.BulletText($"Lightning 2: {FormatReality(mana.Lightning2)}");
+            ImGui.BulletText($"Ice 1: {FormatReality(mana.Ice1)}");
+            ImGui.BulletText($"Ice 2: {FormatReality(mana.Ice2)}");
+            ImGui.BulletText($"Result: {FormatManaResult(mana.Result)}");
+        }
+    }
+
+    private string FormatLogAssignment(P4DebuffRecord record)
+    {
+        if (record.Group == P4MechanicGroup.Flood)
+        {
+            var destination = P4Flood.ResolveDestinationWound(record.StatusId, record.WoundColor, record.Reality);
+            if (destination != WoundColor.None)
+            {
+                return $"Go {P4Flood.FormatDestination(destination, configuration.FloodDestinationNaming)}";
+            }
+
+            var wound = P4Flood.GetStatusWoundColor(record.StatusId);
+            return wound != WoundColor.None
+                ? P4Flood.FormatWoundDebuff(wound, configuration.FloodDestinationNaming)
+                : P4Flood.FormatInstruction(record.StatusId, record.WoundColor, record.FloodSide, record.Reality, configuration.FloodDestinationNaming);
+        }
+
+        if (record.StatusId == 5543)
+        {
+            return $"Go in ({FormatGazeReality(record.Reality)}) ({FormatBucket(record.TimingBucket)})";
+        }
+
+        var call = record.StatusId == 5546
+            ? FormatBomb(record.Reality)
+            : record.Instruction;
+        return $"{call} ({FormatBucket(record.TimingBucket, record.InitialRemainingTime)})";
+    }
+
+    private string FormatBomb(RealityState reality)
+    {
+        var motion = configuration.UseMotionStillnessLabels;
+        return reality switch
+        {
+            RealityState.Real => motion ? "STILLNESS" : "STOP",
+            RealityState.Fake => motion ? "MOTION" : "MOVE",
+            _ => "Unknown",
+        };
+    }
+
+    private static string FormatGazeReality(RealityState reality) => reality switch
+    {
+        RealityState.Real => "OUT",
+        RealityState.Fake => "IN",
+        _ => "Unknown",
+    };
+
+    private static string FormatBucket(P4TimingBucket bucket, float duration = 0.0f) =>
+        bucket != P4TimingBucket.Unknown ? bucket.ToString() : duration > 0.0f ? (duration <= 55.0f ? "Short" : "Long") : "Unknown";
+
+    private static string FormatManaResult(ManaReleaseSafeZone result) => result switch
+    {
+        ManaReleaseSafeZone.Lightning => "Stand in LIGHTNING",
+        ManaReleaseSafeZone.Ice => "Stand in ICE",
+        ManaReleaseSafeZone.Both => "Stand in BOTH",
+        ManaReleaseSafeZone.None => "Stand in NONE",
+        _ => "Unknown",
+    };
 
     private void DrawManaReleaseDiagnosticsTab()
     {

@@ -84,6 +84,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly P3BlackHoleTracker p3BlackHoleTracker;
     private readonly P3LimitCutTracker p3LimitCutTracker;
     private readonly ManaReleaseTracker manaReleaseTracker;
+    private readonly P4SessionLogTracker p4SessionLogTracker = new();
     private readonly List<PartyStatusEntry> currentEntries = [];
     private readonly List<PartyMemberSnapshot> currentMembers = [];
     private readonly List<P4DebuffAssignment> currentAssignments = [];
@@ -131,6 +132,10 @@ public sealed class Plugin : IDalamudPlugin
     public IReadOnlyList<BossTellSnapshot> CurrentPullBossTells => currentPullBossTells;
 
     public IReadOnlyList<P4PullSnapshot> PullSnapshots => pullSnapshots;
+
+    public IReadOnlyList<P4LogPullSnapshot> P4LogHistory => p4SessionLogTracker.Completed;
+
+    public P4LogPullSnapshot? CurrentP4Log => p4SessionLogTracker.Current(CurrentPullElapsedSeconds);
 
     public P3BlackHoleTracker P3BlackHole => p3BlackHoleTracker;
 
@@ -355,23 +360,6 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
-    public void SetEnableFloodTracking(bool enabled)
-    {
-        if (Configuration.EnableFloodTracking == enabled)
-        {
-            return;
-        }
-
-        Configuration.EnableFloodTracking = enabled;
-        if (!enabled)
-        {
-            ClearFloodLiveState();
-        }
-
-        UpdateDisplayMode();
-        SaveConfiguration();
-    }
-
     public void SetFloodDestinationNaming(FloodDestinationNaming naming)
     {
         Configuration.FloodDestinationNaming = Enum.IsDefined(typeof(FloodDestinationNaming), naming)
@@ -466,6 +454,30 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetEnableP4Logging(bool enabled)
+    {
+        if (Configuration.EnableP4Logging == enabled)
+        {
+            return;
+        }
+
+        if (!enabled)
+        {
+            p4SessionLogTracker.Complete("Logging disabled", CurrentPullElapsedSeconds);
+        }
+
+        Configuration.EnableP4Logging = enabled;
+        SaveConfiguration();
+    }
+
+    internal void ObserveManaReleaseForLog(ManaReleaseDisplayState state)
+    {
+        if (Configuration.EnableP4Logging)
+        {
+            p4SessionLogTracker.ObserveMana(state);
+        }
+    }
+
     public void ClearManaReleaseDiagnostics() => manaReleaseTracker.ClearDiagnostics();
 
     public void SetHelperCollapsed(bool collapsed)
@@ -513,7 +525,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 12)
+        if (Configuration.Version >= 13)
         {
             return;
         }
@@ -571,7 +583,14 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.ColorAccelerationBombCalls = false;
         }
 
-        Configuration.Version = 12;
+        if (Configuration.Version < 13)
+        {
+            // The legacy switch remains serialized for compatibility, but Flood guidance is now always tracked.
+            Configuration.EnableFloodTracking = true;
+            Configuration.EnableP4Logging = false;
+        }
+
+        Configuration.Version = 13;
         SaveConfiguration();
     }
 
@@ -720,8 +739,7 @@ public sealed class Plugin : IDalamudPlugin
                 }
 
                 var isWatched = WatchedStatuses.TryGetValue(status.StatusId, out var watchedStatus);
-                if (!isWatched ||
-                    (!Configuration.EnableFloodTracking && watchedStatus!.Group == P4MechanicGroup.Flood))
+                if (!isWatched)
                 {
                     continue;
                 }
@@ -769,6 +787,11 @@ public sealed class Plugin : IDalamudPlugin
         RefreshPartyGazeAssignments();
         RefreshLocalAssignments();
         UpdatePullTracking();
+        if (Configuration.EnableP4Logging)
+        {
+            p4SessionLogTracker.ObserveAssignments(currentPullDebuffRecords);
+            p4SessionLogTracker.ObserveGazes(currentGazeAssignments);
+        }
         var p4PhaseSignal = HasP4PhaseSignal();
         if (p4PhaseSignal && !p4SeenThisPull)
         {
@@ -794,6 +817,7 @@ public sealed class Plugin : IDalamudPlugin
         p3BlackHoleTracker.Refresh(isInDmu: false, suppressLiveForP4: false);
         p3LimitCutTracker.Reset();
         CaptureCurrentPullSnapshot(snapshotReason);
+        p4SessionLogTracker.Complete(snapshotReason, CurrentPullElapsedSeconds);
         currentEntries.Clear();
         currentMembers.Clear();
         currentAssignments.Clear();
@@ -822,6 +846,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             CaptureCurrentPullSnapshot(snapshotReason);
         }
+        p4SessionLogTracker.Complete(snapshotReason, CurrentPullElapsedSeconds);
 
         currentEntries.Clear();
         currentMembers.Clear();
@@ -841,27 +866,6 @@ public sealed class Plugin : IDalamudPlugin
         }
         ResetPullState();
         p4SeenThisPull = false;
-    }
-
-    private void ClearFloodLiveState()
-    {
-        var floodEntryKeys = currentEntries
-            .Where(entry => WatchedStatuses.TryGetValue(entry.StatusId, out var rule) && rule.Group == P4MechanicGroup.Flood)
-            .Select(entry => entry.Key)
-            .ToHashSet(StringComparer.Ordinal);
-
-        currentEntries.RemoveAll(entry => floodEntryKeys.Contains(entry.Key));
-        currentAssignments.RemoveAll(assignment => assignment.Rule.Group == P4MechanicGroup.Flood);
-        localAssignments.RemoveAll(assignment => assignment.Rule.Group == P4MechanicGroup.Flood);
-        foreach (var key in floodEntryKeys)
-        {
-            capturedDebuffStates.Remove(key);
-            statusTimerAnchors.Remove(key);
-            activeDebuffRecordIndexes.Remove(key);
-        }
-
-        capturedFloodWounds.Clear();
-        UpdateCurrentPullDebuffRecords();
     }
 
     private bool HasP4PhaseSignal()
@@ -1242,7 +1246,9 @@ public sealed class Plugin : IDalamudPlugin
             assignment.Entry.RemainingTime,
             assignment.Instruction,
             assignment.WoundColor,
-            assignment.FloodSide);
+            assignment.FloodSide,
+            assignment.InitialRemainingTime,
+            assignment.TimingBucket);
     }
 
     private void PruneCapturedDebuffStates()
@@ -1535,6 +1541,7 @@ public sealed class Plugin : IDalamudPlugin
         p3BlackHoleTracker.OnDutyReset();
         p3LimitCutTracker.Reset();
         CaptureCurrentPullSnapshot("Wipe/reset detected");
+        p4SessionLogTracker.Complete("Wipe/reset detected", CurrentPullElapsedSeconds);
         currentEntries.Clear();
         currentMembers.Clear();
         currentAssignments.Clear();
