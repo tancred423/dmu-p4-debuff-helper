@@ -141,7 +141,6 @@ public sealed class HelperWindow : Window, IDisposable
             ImGui.TableSetupColumn("Support", ImGuiTableColumnFlags.WidthStretch, 1.15f);
             ImGui.TableNextRow();
             ImGui.TableSetColumnIndex(0);
-            DrawReminderChecklist(checklistLines);
             DrawSection(
                 "Active",
                 assignments,
@@ -149,6 +148,11 @@ public sealed class HelperWindow : Window, IDisposable
                 vertically: true,
                 asTable: plugin.Configuration.DisplayP4AsTable);
             ImGui.TableSetColumnIndex(1);
+            DrawReminderChecklist(checklistLines);
+            if (checklistLines.Count > 0)
+            {
+                ImGui.Spacing();
+            }
             DrawGazeSection("Gazes", gazeAssignments, "GazesVertical");
             if (showManaRelease)
             {
@@ -160,8 +164,25 @@ public sealed class HelperWindow : Window, IDisposable
             return;
         }
 
-        DrawReminderChecklist(checklistLines);
-        DrawSection("Active", assignments, "Active");
+        if (checklistLines.Count > 0 && ImGui.BeginTable(
+                "##P4HorizontalLayout",
+                2,
+                ImGuiTableFlags.SizingStretchProp | ImGuiTableFlags.NoSavedSettings))
+        {
+            ImGui.TableSetupColumn("Checklist", ImGuiTableColumnFlags.WidthFixed, GetChecklistPanelWidth(checklistLines));
+            ImGui.TableSetupColumn("Active", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableNextRow();
+            ImGui.TableSetColumnIndex(0);
+            DrawReminderChecklist(checklistLines);
+            ImGui.TableSetColumnIndex(1);
+            DrawSection("Active", assignments, "Active");
+            ImGui.EndTable();
+        }
+        else
+        {
+            DrawSection("Active", assignments, "Active");
+        }
+
         ImGui.Spacing();
         DrawGazeSection("Gazes", gazeAssignments, "Gazes");
         if (showManaRelease)
@@ -817,7 +838,7 @@ public sealed class HelperWindow : Window, IDisposable
             .Select(assignment => assignment.Rule.Id switch
             {
                 5544 => assignment with { InitialRemainingTime = 75.0f },
-                CursedShriekStatusId => assignment with { TimingBucket = P4TimingBucket.Long },
+                CursedShriekStatusId => assignment with { TimingBucket = P4TimingBucket.Short },
                 _ => assignment,
             })
             .ToList();
@@ -1063,7 +1084,7 @@ public sealed class HelperWindow : Window, IDisposable
                 _ => "Gaze",
             };
             var text = $"{FormatTimingBucket(timing)} {label}";
-            lines.Add(new ReminderChecklistLine(category, timing, text, GetAssignmentLabelColor(assignment)));
+            lines.Add(new ReminderChecklistLine(category, timing, text, GetChecklistLineColor(assignment)));
         }
 
         return lines
@@ -1096,6 +1117,18 @@ public sealed class HelperWindow : Window, IDisposable
         return timing == P4TimingBucket.Short ? "Short" : "Long";
     }
 
+    private Vector4? GetChecklistLineColor(P4DebuffAssignment assignment)
+    {
+        if (!plugin.Configuration.ColorAccelerationBombCalls ||
+            assignment.Rule.Id != 5546 ||
+            assignment.Reality is not (RealityState.Real or RealityState.Fake))
+        {
+            return null;
+        }
+
+        return assignment.Reality == RealityState.Real ? StillnessColor : MotionColor;
+    }
+
     private void DrawReminderChecklist(IReadOnlyList<ReminderChecklistLine> lines)
     {
         if (lines.Count == 0)
@@ -1105,19 +1138,36 @@ public sealed class HelperWindow : Window, IDisposable
 
         ImGui.TextColored(GoldColor, "Checklist");
         var panelStart = ImGui.GetCursorScreenPos();
-        var panelWidth = MathF.Max(160.0f, ImGui.GetContentRegionAvail().X);
+        var panelWidth = MathF.Max(GetChecklistPanelWidth(lines), ImGui.GetContentRegionAvail().X);
         var panelHeight = HelperPadding * 2.0f + lines.Count * ImGui.GetTextLineHeightWithSpacing();
         var drawList = ImGui.GetWindowDrawList();
         drawList.AddRectFilled(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelFillColor), 6.0f);
         drawList.AddRect(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelBorderColor), 6.0f);
 
         ImGui.SetCursorScreenPos(panelStart + new Vector2(HelperPadding, HelperPadding));
+        var contentLeft = panelStart.X + HelperPadding;
         foreach (var line in lines)
         {
-            ImGui.TextColored(line.Color, line.Text);
+            ImGui.SetCursorScreenPos(new Vector2(contentLeft, ImGui.GetCursorScreenPos().Y));
+            if (line.Color is { } color)
+            {
+                ImGui.TextColored(color, line.Text);
+            }
+            else
+            {
+                ImGui.TextUnformatted(line.Text);
+            }
         }
 
         ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
+    }
+
+    private static float GetChecklistPanelWidth(IReadOnlyList<ReminderChecklistLine> lines)
+    {
+        var widestLine = lines.Count == 0
+            ? 0.0f
+            : lines.Max(line => ImGui.CalcTextSize(line.Text).X);
+        return MathF.Max(160.0f, widestLine + HelperPadding * 2.0f);
     }
 
     private void DrawSection(
@@ -1847,5 +1897,5 @@ public sealed class HelperWindow : Window, IDisposable
         int Category,
         P4TimingBucket Timing,
         string Text,
-        Vector4 Color);
+        Vector4? Color);
 }
