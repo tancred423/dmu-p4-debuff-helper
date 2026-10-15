@@ -3,8 +3,7 @@
 >
 > This fork adds the following configurations and additions:
 > * P3 and P4 tracking can be disabled completely in case you just need P4 for example.
-> * Flood tracking can be hidden to declutter the information as this mech is very easy. Just hides the Wound and AF/BD debuffs.
-> * Can also just hide Wound debuffs and only keep AF/BD debuffs with "Go Black/Blue" callout.
+> * Wound tracking can be hidden so it just shows the "Go Black/Blue" debuff (PD/AF), but not the White/Black Wound debuff.
 > * Flood terminology: Use "Blue/Purple" instead of "Black/White" and "Blue Vuln/Purple Vuln" instead of "Black Wound/White Wound" to use the in game colors instead of in game names.
 > * Option to add "(Short)/(Long)" to Stack/Spread and personal Gaze callouts. Stack/Spread debuffs < 55s are marked as short and > 55s are long; the first Gaze cohort is short and the second is long.
 > * Option to hide the "Real:/Fake:" labels from the debuffs as the debuffs already say what you have to do. E. g. the Spread debuff shows "Stack" if fake so no need to display "Fake:".
@@ -20,11 +19,11 @@
 > * Acceleration Bomb callouts always use uppercase MOVE/MOTION/STOP/STILLNESS, with an opt-in green/red color treatment.
 > * Optional referred stack call. If you got short stack/spread a long stack will be added too and vice versa.
 >
-> Example with horizontal layout, descriptive colors, added "(Short)/(Long)" text, shriek callout in active window, shriek call out change to OUT/IN, removed "Real/Fake" prefix and referred long stack:
-> <img width="829" height="485" alt="image" src="https://github.com/user-attachments/assets/ee516346-5687-436c-b697-ec9903df5988" />
+> Example with horizontal layout, descriptive colors, added "(Short)/(Long)" text, shriek callout in active window, shriek call out change to OUT/IN, removed "Real/Fake" prefix, added Checklist and referred long stack:
+> <img width="643" height="498" alt="image" src="https://github.com/user-attachments/assets/cb3449b2-5825-4813-9f1f-a75b2143cefd" />
 >
 > Same example but with vertical table view:
-> <img width="805" height="469" alt="image" src="https://github.com/user-attachments/assets/b23508cc-f388-45e7-874f-7b9a6838b05c" />
+> <img width="634" height="415" alt="image" src="https://github.com/user-attachments/assets/856916ad-71a4-4ed9-89b9-d648be37c0d2" />
 >
 > Per default this fork behaves like the original plugin. But then you can customise it to your liking.
 > Add this custom repository URL in Dalamud's Plugin Installer settings, under Custom Plugin Repositories, then refresh and install `DMU Helper`:
