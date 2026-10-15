@@ -826,7 +826,7 @@ public sealed class HelperWindow : Window, IDisposable
         {
             (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 14.3f, "Preview Player", 0, WoundColor.White),
             (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 14.3f, "Preview Player", 0, WoundColor.White),
-            (5544, RealityState.Fake, 1119, 19.1f, "Preview Player", 0, WoundColor.None),
+            (5544, RealityState.Fake, 1119, 44.3f, "Preview Player", 0, WoundColor.None),
             (5546, RealityState.Fake, 1119, 19.1f, "Preview Player", 0, WoundColor.None),
             (CursedShriekStatusId, RealityState.Real, 1120, 28.6f, "Preview Player", 0, WoundColor.None),
             (5547, RealityState.Fake, 1121, 35.0f, "Preview Player", 0, WoundColor.None),
@@ -849,8 +849,8 @@ public sealed class HelperWindow : Window, IDisposable
                 "Preview:0",
                 "Preview Player",
                 0,
-                44.3f,
-                75.0f)));
+                19.1f,
+                51.0f)));
         }
 
         return GetVisibleActiveAssignments(GetOrderedAssignments(assignments));
