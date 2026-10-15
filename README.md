@@ -19,10 +19,12 @@
 > * Acceleration Bomb callouts always use uppercase MOVE/MOTION/STOP/STILLNESS, with an opt-in green/red color treatment.
 > * Optional referred stack call. If you got short stack/spread a long stack will be added too and vice versa.
 >
-> Example with horizontal layout, descriptive colors, added "(Short)/(Long)" text, shriek callout in active window, shriek call out change to OUT/IN, removed "Real/Fake" prefix, added Checklist and referred long stack:
+> Example with horizontal layout, descriptive colors, added "(Short)/(Long)" text, shriek callout in active window, shriek call out change to OUT/IN, removed "Real/Fake" prefix, added Checklist, using Motion/Stillness instead of Move/Stop, green/red colors for Motion/Stillness and referred long stack:
+> 
 > <img width="643" height="498" alt="image" src="https://github.com/user-attachments/assets/cb3449b2-5825-4813-9f1f-a75b2143cefd" />
 >
 > Same example but with vertical table view:
+> 
 > <img width="634" height="415" alt="image" src="https://github.com/user-attachments/assets/856916ad-71a4-4ed9-89b9-d648be37c0d2" />
 >
 > Per default this fork behaves like the original plugin. But then you can customise it to your liking.
