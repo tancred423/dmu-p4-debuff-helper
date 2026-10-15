@@ -23,6 +23,8 @@ public sealed class HelperWindow : Window, IDisposable
     private static readonly Vector4 UnknownColor = new(0.75f, 0.75f, 0.75f, 1.0f);
     private static readonly Vector4 BlueSideColor = new(0.35f, 0.72f, 1.0f, 1.0f);
     private static readonly Vector4 PurpleSideColor = new(0.82f, 0.55f, 1.0f, 1.0f);
+    private static readonly Vector4 MotionColor = new(0.25f, 1.0f, 0.35f, 1.0f);
+    private static readonly Vector4 StillnessColor = new(1.0f, 0.28f, 0.22f, 1.0f);
     private static readonly Vector4 TimerTextColor = new(0.94f, 0.98f, 1.0f, 1.0f);
     private static readonly Vector4 PanelBorderColor = new(1.0f, 1.0f, 1.0f, 0.18f);
     private static readonly Vector4 PanelFillColor = new(0.02f, 0.025f, 0.03f, 0.32f);
@@ -123,6 +125,7 @@ public sealed class HelperWindow : Window, IDisposable
         ManaReleaseDisplayState? manaReleaseState = null)
     {
         var showManaRelease = plugin.Configuration.EnableExperimentalManaReleaseTracking;
+        var checklistLines = BuildReminderChecklist(assignments);
         if (assignments.Count == 0 && gazeAssignments.Count == 0 && !showManaRelease)
         {
             ImGui.TextDisabled("Waiting for P4 debuffs.");
@@ -138,6 +141,7 @@ public sealed class HelperWindow : Window, IDisposable
             ImGui.TableSetupColumn("Support", ImGuiTableColumnFlags.WidthStretch, 1.15f);
             ImGui.TableNextRow();
             ImGui.TableSetColumnIndex(0);
+            DrawReminderChecklist(checklistLines);
             DrawSection(
                 "Active",
                 assignments,
@@ -156,6 +160,7 @@ public sealed class HelperWindow : Window, IDisposable
             return;
         }
 
+        DrawReminderChecklist(checklistLines);
         DrawSection("Active", assignments, "Active");
         ImGui.Spacing();
         DrawGazeSection("Gazes", gazeAssignments, "Gazes");
@@ -801,13 +806,21 @@ public sealed class HelperWindow : Window, IDisposable
             (P4Flood.WhiteWound2StatusId, RealityState.Unknown, 0, 14.3f, "Preview Player", 0, WoundColor.White),
             (P4Flood.AllaganFieldStatusId, RealityState.Real, 1122, 14.3f, "Preview Player", 0, WoundColor.White),
             (5544, RealityState.Fake, 1119, 19.1f, "Preview Player", 0, WoundColor.None),
-            (5546, RealityState.Real, 1120, 19.1f, "Preview Player", 0, WoundColor.None),
+            (5546, RealityState.Fake, 1119, 19.1f, "Preview Player", 0, WoundColor.None),
             (CursedShriekStatusId, RealityState.Real, 1120, 28.6f, "Preview Player", 0, WoundColor.None),
             (5547, RealityState.Fake, 1121, 35.0f, "Preview Player", 0, WoundColor.None),
             (5548, RealityState.Real, 1122, 58.8f, "Preview Player", 0, WoundColor.None),
         };
 
         var assignments = BuildPreviewAssignments(previews);
+        assignments = assignments
+            .Select(assignment => assignment.Rule.Id switch
+            {
+                5544 => assignment with { InitialRemainingTime = 75.0f },
+                CursedShriekStatusId => assignment with { TimingBucket = P4TimingBucket.Long },
+                _ => assignment,
+            })
+            .ToList();
         if (plugin.Configuration.ShowInferredStackCall)
         {
             assignments.Add(CreateInferredStackAssignment(new InferredStackDisplayState(
@@ -819,7 +832,7 @@ public sealed class HelperWindow : Window, IDisposable
                 75.0f)));
         }
 
-        return GetOrderedAssignments(assignments);
+        return GetVisibleActiveAssignments(GetOrderedAssignments(assignments));
     }
 
     private List<P4DebuffAssignment> GetDisplayAssignments(
@@ -832,7 +845,14 @@ public sealed class HelperWindow : Window, IDisposable
             displayedAssignments.Add(CreateInferredStackAssignment(inferredStackState));
         }
 
-        return GetOrderedAssignments(displayedAssignments);
+        return GetVisibleActiveAssignments(GetOrderedAssignments(displayedAssignments));
+    }
+
+    private List<P4DebuffAssignment> GetVisibleActiveAssignments(IReadOnlyList<P4DebuffAssignment> assignments)
+    {
+        return assignments
+            .Where(assignment => plugin.Configuration.ShowWoundDebuffsInActive || !P4Flood.IsWoundStatus(assignment.Rule.Id))
+            .ToList();
     }
 
     private P4DebuffAssignment CreateInferredStackAssignment(InferredStackDisplayState state)
@@ -1012,6 +1032,97 @@ public sealed class HelperWindow : Window, IDisposable
 
             assignments[insertAt] = current;
         }
+    }
+
+    private List<ReminderChecklistLine> BuildReminderChecklist(IReadOnlyList<P4DebuffAssignment> assignments)
+    {
+        if (!plugin.Configuration.ShowP4ReminderChecklist)
+        {
+            return [];
+        }
+
+        var lines = new List<ReminderChecklistLine>();
+        foreach (var assignment in assignments)
+        {
+            if (assignment.IsInferredStack || assignment.Rule.Id is not (5544 or 5545 or 5546 or CursedShriekStatusId))
+            {
+                continue;
+            }
+
+            var category = assignment.Rule.Id switch
+            {
+                5546 => 0,
+                5544 or 5545 => 1,
+                _ => 2,
+            };
+            var timing = GetChecklistTimingBucket(assignment);
+            if (timing == P4TimingBucket.Unknown || (category != 2 && assignment.Reality == RealityState.Unknown))
+            {
+                continue;
+            }
+
+            var label = category switch
+            {
+                0 => GetResolutionLabel(assignment),
+                1 => GetResolutionLabel(assignment),
+                _ => "Gaze",
+            };
+            var text = $"{FormatTimingBucket(timing)} {label}";
+            lines.Add(new ReminderChecklistLine(category, timing, text, GetAssignmentLabelColor(assignment)));
+        }
+
+        return lines
+            .GroupBy(line => line.Category)
+            .Select(group => group.OrderBy(line => line.Timing).First())
+            .OrderBy(line => line.Timing)
+            .ThenBy(line => line.Category)
+            .ToList();
+    }
+
+    private static P4TimingBucket GetChecklistTimingBucket(P4DebuffAssignment assignment)
+    {
+        if (assignment.Rule.Id == CursedShriekStatusId)
+        {
+            return assignment.TimingBucket;
+        }
+
+        if (assignment.InitialRemainingTime <= 0.0f)
+        {
+            return P4TimingBucket.Unknown;
+        }
+
+        return assignment.InitialRemainingTime <= 55.0f
+            ? P4TimingBucket.Short
+            : P4TimingBucket.Long;
+    }
+
+    private static string FormatTimingBucket(P4TimingBucket timing)
+    {
+        return timing == P4TimingBucket.Short ? "Short" : "Long";
+    }
+
+    private void DrawReminderChecklist(IReadOnlyList<ReminderChecklistLine> lines)
+    {
+        if (lines.Count == 0)
+        {
+            return;
+        }
+
+        ImGui.TextColored(GoldColor, "Checklist");
+        var panelStart = ImGui.GetCursorScreenPos();
+        var panelWidth = MathF.Max(160.0f, ImGui.GetContentRegionAvail().X);
+        var panelHeight = HelperPadding * 2.0f + lines.Count * ImGui.GetTextLineHeightWithSpacing();
+        var drawList = ImGui.GetWindowDrawList();
+        drawList.AddRectFilled(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelFillColor), 6.0f);
+        drawList.AddRect(panelStart, panelStart + new Vector2(panelWidth, panelHeight), ImGui.GetColorU32(PanelBorderColor), 6.0f);
+
+        ImGui.SetCursorScreenPos(panelStart + new Vector2(HelperPadding, HelperPadding));
+        foreach (var line in lines)
+        {
+            ImGui.TextColored(line.Color, line.Text);
+        }
+
+        ImGui.SetCursorScreenPos(panelStart + new Vector2(0.0f, panelHeight + ImGui.GetStyle().ItemSpacing.Y));
     }
 
     private void DrawSection(
@@ -1455,7 +1566,7 @@ public sealed class HelperWindow : Window, IDisposable
         }
 
         var realityLine = assignment.Rule.Id == CursedShriekStatusId
-            ? FormatLocalGazeCall(assignment.Reality)
+            ? FormatLocalGazeCall(assignment)
             : assignment.Rule.Group != P4MechanicGroup.Flood && assignment.Reality == RealityState.Unknown
             ? "Tell not captured."
             : GetRealityLine(assignment);
@@ -1495,7 +1606,7 @@ public sealed class HelperWindow : Window, IDisposable
 
         if (assignment.Rule.Id == CursedShriekStatusId)
         {
-            return FormatLocalGazeCall(assignment.Reality);
+            return FormatLocalGazeCall(assignment);
         }
 
         var destinationWound = P4Flood.ResolveDestinationWound(assignment.Rule.Id, assignment.WoundColor, assignment.Reality);
@@ -1544,11 +1655,12 @@ public sealed class HelperWindow : Window, IDisposable
             : resolution;
     }
 
-    private string FormatLocalGazeCall(RealityState reality)
+    private string FormatLocalGazeCall(P4DebuffAssignment assignment)
     {
-        return reality == RealityState.Unknown
+        var call = assignment.Reality == RealityState.Unknown
             ? "Go in"
-            : $"Go in ({FormatGazeDirection(reality, uppercase: true)})";
+            : $"Go in ({FormatGazeDirection(assignment.Reality, uppercase: true)})";
+        return $"{call}{GetGazeTimingSuffix(assignment)}";
     }
 
     private string FormatPartyGazeInstruction(RealityState reality)
@@ -1579,6 +1691,16 @@ public sealed class HelperWindow : Window, IDisposable
         return assignment.InitialRemainingTime <= 55.0f ? " (Short)" : " (Long)";
     }
 
+    private string GetGazeTimingSuffix(P4DebuffAssignment assignment)
+    {
+        if (!plugin.Configuration.ShowStackSpreadTiming || assignment.TimingBucket == P4TimingBucket.Unknown)
+        {
+            return string.Empty;
+        }
+
+        return assignment.TimingBucket == P4TimingBucket.Short ? " (Short)" : " (Long)";
+    }
+
     private string FormatAssignmentInstruction(P4DebuffAssignment assignment)
     {
         if (assignment.Rule.Id == CursedShriekStatusId)
@@ -1606,8 +1728,8 @@ public sealed class HelperWindow : Window, IDisposable
             5544 => assignment.Reality == RealityState.Real ? "Spread" : "Stack",
             5543 => $"Look {FormatGazeDirection(assignment.Reality, uppercase: plugin.Configuration.GazeDirectionNaming == GazeDirectionNaming.OutIn)}",
             5546 => assignment.Reality == RealityState.Real
-                ? plugin.Configuration.UseMotionStillnessLabels ? "Stillness" : "Stop"
-                : plugin.Configuration.UseMotionStillnessLabels ? "Motion" : "Move",
+                ? plugin.Configuration.UseMotionStillnessLabels ? "STILLNESS" : "STOP"
+                : plugin.Configuration.UseMotionStillnessLabels ? "MOTION" : "MOVE",
             5548 => assignment.Reality == RealityState.Real ? "Donut" : "Point-blank",
             5547 => assignment.Reality == RealityState.Real ? "Point-blank" : "Donut",
             _ => FormatReality(assignment.Reality),
@@ -1662,8 +1784,15 @@ public sealed class HelperWindow : Window, IDisposable
         };
     }
 
-    private static Vector4 GetAssignmentLabelColor(P4DebuffAssignment assignment)
+    private Vector4 GetAssignmentLabelColor(P4DebuffAssignment assignment)
     {
+        if (plugin.Configuration.ColorAccelerationBombCalls &&
+            assignment.Rule.Id == 5546 &&
+            assignment.Reality is RealityState.Real or RealityState.Fake)
+        {
+            return assignment.Reality == RealityState.Real ? StillnessColor : MotionColor;
+        }
+
         if (assignment.FloodSide != FloodSide.None)
         {
             return GetFloodSideColor(assignment.FloodSide);
@@ -1718,4 +1847,10 @@ public sealed class HelperWindow : Window, IDisposable
     private sealed record GazeDisplayAssignment(
         P4DebuffAssignment Representative,
         IReadOnlyList<P4DebuffAssignment> Assignments);
+
+    private sealed record ReminderChecklistLine(
+        int Category,
+        P4TimingBucket Timing,
+        string Text,
+        Vector4 Color);
 }

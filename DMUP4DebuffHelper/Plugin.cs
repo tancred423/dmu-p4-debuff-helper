@@ -98,6 +98,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly Dictionary<string, BossTellSnapshot> latestBossTells = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CapturedDebuffState> capturedDebuffStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CapturedFloodWoundState> capturedFloodWounds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, P4TimingBucket> gazeTimingBuckets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StatusTimerAnchor> statusTimerAnchors = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> activeDebuffRecordIndexes = new(StringComparer.Ordinal);
     private readonly HashSet<string> activeDebuffKeysLastFrame = new(StringComparer.Ordinal);
@@ -111,6 +112,7 @@ public sealed class Plugin : IDalamudPlugin
     private float lastKnownPullElapsedSeconds;
     private bool p4SeenThisPull;
     private InferredStackTrackerState? inferredStackTrackerState;
+    private float? shortGazeCohortTimer;
 
     public Configuration Configuration { get; }
 
@@ -446,6 +448,24 @@ public sealed class Plugin : IDalamudPlugin
         SaveConfiguration();
     }
 
+    public void SetShowP4ReminderChecklist(bool enabled)
+    {
+        Configuration.ShowP4ReminderChecklist = enabled;
+        SaveConfiguration();
+    }
+
+    public void SetShowWoundDebuffsInActive(bool enabled)
+    {
+        Configuration.ShowWoundDebuffsInActive = enabled;
+        SaveConfiguration();
+    }
+
+    public void SetColorAccelerationBombCalls(bool enabled)
+    {
+        Configuration.ColorAccelerationBombCalls = enabled;
+        SaveConfiguration();
+    }
+
     public void ClearManaReleaseDiagnostics() => manaReleaseTracker.ClearDiagnostics();
 
     public void SetHelperCollapsed(bool collapsed)
@@ -493,7 +513,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void MigrateConfiguration()
     {
-        if (Configuration.Version >= 11)
+        if (Configuration.Version >= 12)
         {
             return;
         }
@@ -544,7 +564,14 @@ public sealed class Plugin : IDalamudPlugin
             Configuration.ShowInferredStackCall = false;
         }
 
-        Configuration.Version = 11;
+        if (Configuration.Version < 12)
+        {
+            Configuration.ShowP4ReminderChecklist = false;
+            Configuration.ShowWoundDebuffsInActive = true;
+            Configuration.ColorAccelerationBombCalls = false;
+        }
+
+        Configuration.Version = 12;
         SaveConfiguration();
     }
 
@@ -734,6 +761,7 @@ public sealed class Plugin : IDalamudPlugin
         PruneStatusTimerAnchors(currentEntries);
         CaptureActiveFloodWounds(currentEntries, now);
         PruneCapturedFloodWounds(now);
+        RefreshGazeTimingBuckets();
 
         RefreshBossTellSnapshots();
         RefreshAssignments();
@@ -775,6 +803,7 @@ public sealed class Plugin : IDalamudPlugin
         latestBossTells.Clear();
         capturedDebuffStates.Clear();
         capturedFloodWounds.Clear();
+        ClearGazeTimingBuckets();
         statusTimerAnchors.Clear();
         activeBossTellKeysLastFrame.Clear();
         ClearInferredStackState();
@@ -803,6 +832,7 @@ public sealed class Plugin : IDalamudPlugin
         latestBossTells.Clear();
         capturedDebuffStates.Clear();
         capturedFloodWounds.Clear();
+        ClearGazeTimingBuckets();
         statusTimerAnchors.Clear();
         ClearInferredStackState();
         if (manaReleaseTracker.DisplayState is not null)
@@ -959,7 +989,8 @@ public sealed class Plugin : IDalamudPlugin
                     GetInstruction(rule, capturedState.Reality, woundColor, floodSide),
                     woundColor,
                     floodSide,
-                    capturedState.InitialRemainingTime));
+                    capturedState.InitialRemainingTime,
+                    TimingBucket: GetGazeTimingBucket(entry)));
                 continue;
             }
 
@@ -973,7 +1004,8 @@ public sealed class Plugin : IDalamudPlugin
                 GetInstruction(rule, capturedState.Reality, woundColor, floodSide),
                 woundColor,
                 floodSide,
-                capturedState.InitialRemainingTime));
+                capturedState.InitialRemainingTime,
+                TimingBucket: GetGazeTimingBucket(entry)));
         }
 
         UpdateCurrentPullDebuffRecords();
@@ -1062,6 +1094,47 @@ public sealed class Plugin : IDalamudPlugin
         activeInferredStackSourceKeysLastFrame.Clear();
     }
 
+    private void RefreshGazeTimingBuckets()
+    {
+        var activeGazes = currentEntries
+            .Where(entry => entry.StatusId == CursedShriekStatusId)
+            .OrderBy(entry => entry.RemainingTime)
+            .ToList();
+        if (activeGazes.Count == 0)
+        {
+            return;
+        }
+
+        var newGazes = activeGazes
+            .Where(entry => !gazeTimingBuckets.ContainsKey(entry.Key))
+            .ToList();
+        if (newGazes.Count == 0)
+        {
+            return;
+        }
+
+        shortGazeCohortTimer ??= newGazes[0].RemainingTime;
+        foreach (var gaze in newGazes)
+        {
+            gazeTimingBuckets[gaze.Key] = MathF.Abs(gaze.RemainingTime - shortGazeCohortTimer.Value) <= 2.0f
+                ? P4TimingBucket.Short
+                : P4TimingBucket.Long;
+        }
+    }
+
+    private P4TimingBucket GetGazeTimingBucket(PartyStatusEntry entry)
+    {
+        return entry.StatusId == CursedShriekStatusId && gazeTimingBuckets.TryGetValue(entry.Key, out var timingBucket)
+            ? timingBucket
+            : P4TimingBucket.Unknown;
+    }
+
+    private void ClearGazeTimingBuckets()
+    {
+        gazeTimingBuckets.Clear();
+        shortGazeCohortTimer = null;
+    }
+
     private void RefreshLocalAssignments()
     {
         localAssignments.Clear();
@@ -1092,7 +1165,8 @@ public sealed class Plugin : IDalamudPlugin
                 capturedState.Reality,
                 capturedState.TellParam,
                 GetInstruction(rule, capturedState.Reality, WoundColor.None, FloodSide.None),
-                InitialRemainingTime: capturedState.InitialRemainingTime));
+                InitialRemainingTime: capturedState.InitialRemainingTime,
+                TimingBucket: GetGazeTimingBucket(entry)));
         }
     }
 
@@ -1470,6 +1544,7 @@ public sealed class Plugin : IDalamudPlugin
         latestBossTells.Clear();
         capturedDebuffStates.Clear();
         capturedFloodWounds.Clear();
+        ClearGazeTimingBuckets();
         statusTimerAnchors.Clear();
         activeBossTellKeysLastFrame.Clear();
         ClearInferredStackState();
@@ -1554,6 +1629,7 @@ public sealed class Plugin : IDalamudPlugin
         currentPullDebuffRecords.Clear();
         currentPullBossTells.Clear();
         capturedFloodWounds.Clear();
+        ClearGazeTimingBuckets();
         activeDebuffRecordIndexes.Clear();
         activeDebuffKeysLastFrame.Clear();
         activeBossTellKeysLastFrame.Clear();

@@ -5,7 +5,7 @@
 > * P3 and P4 tracking can be disabled completely in case you just need P4 for example.
 > * Flood tracking can be disabled to declutter the information as this mech is very easy. Just hides the Wound and AF/BD debuffs.
 > * Flood terminology: Use "Blue/Purple" instead of "Black/White" and "Blue Vuln/Purple Vuln" instead of "Black Wound/White Wound" to use the in game colors instead of in game names.
-> * Option to add "(Short)/(Long)" to Stack/Spread debuff names. Debuffs < 55s are marked as short and > 55s are long.
+> * Option to add "(Short)/(Long)" to Stack/Spread and personal Gaze callouts. Stack/Spread debuffs < 55s are marked as short and > 55s are long; the first Gaze cohort is short and the second is long.
 > * Option to hide the "Real:/Fake:" labels from the debuffs as the debuffs already say what you have to do. E. g. the Spread debuff shows "Stack" if fake so no need to display "Fake:".
 > * Option to use "Motion/Stillness" wording instead of "Move/Stop" for Acceleration Bomb.
 > * The preview now respects your config.
@@ -13,6 +13,9 @@
 > * Gaze on you is also shown in active window now to remind you to go in. It will have the label `Go in` with Away/Toward or Out/In direction wording.
 > * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both". It waits quietly for data until P4 is active and does not interfere with P3.
 > * Optional vertical P4 layout: Active calls stack on the left, with Gazes and Mana Release on the right.
+> * Opt-in P4 reminder checklist above Active: shows your current short/long Bomb, Stack/Spread, and Gaze assignments without timers.
+> * Wound rows can be hidden from Active without disabling Flood destination guidance.
+> * Acceleration Bomb callouts always use uppercase MOVE/MOTION/STOP/STILLNESS, with an opt-in green/red color treatment.
 > * Optional referred stack call. If you got short stack/spread a long stack will be added too and vice versa.
 >
 > Example with horizontal layout, descriptive colors, added "(Short)/(Long)" text, shriek callout in active window, shriek call out change to OUT/IN, removed "Real/Fake" prefix and referred long stack:

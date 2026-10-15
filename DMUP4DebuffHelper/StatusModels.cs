@@ -60,6 +60,13 @@ public enum GazeDirectionNaming
     OutIn,
 }
 
+public enum P4TimingBucket
+{
+    Unknown,
+    Short,
+    Long,
+}
+
 public enum ManaReleaseSafeZone
 {
     Unknown,
@@ -318,7 +325,8 @@ public sealed record P4DebuffAssignment(
     WoundColor WoundColor = WoundColor.None,
     FloodSide FloodSide = FloodSide.None,
     float InitialRemainingTime = 0.0f,
-    bool IsInferredStack = false);
+    bool IsInferredStack = false,
+    P4TimingBucket TimingBucket = P4TimingBucket.Unknown);
 
 public sealed record InferredStackDisplayState(
     string SourceKey,

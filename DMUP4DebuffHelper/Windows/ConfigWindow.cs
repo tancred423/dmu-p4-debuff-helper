@@ -127,8 +127,19 @@ public sealed class ConfigWindow : Window, IDisposable
         }
 
         ImGui.TextDisabled("Tracks Allagan Field, Beyond Death, Black Wound, and White Wound.");
+
+        ImGui.BeginDisabled(!configuration.EnableFloodTracking);
+        var showWoundDebuffsInActive = configuration.ShowWoundDebuffsInActive;
+        if (ImGui.Checkbox("Show Wound in Active", ref showWoundDebuffsInActive))
+        {
+            plugin.SetShowWoundDebuffsInActive(showWoundDebuffsInActive);
+        }
+
+        ImGui.TextDisabled("Hides only the Wound row; Flood destination calls still use your Wound.");
+        ImGui.EndDisabled();
+
         var showStackSpreadTiming = configuration.ShowStackSpreadTiming;
-        if (ImGui.Checkbox("Show short/long for stack/spread", ref showStackSpreadTiming))
+        if (ImGui.Checkbox("Show short/long for stack/spread and gaze", ref showStackSpreadTiming))
         {
             plugin.SetShowStackSpreadTiming(showStackSpreadTiming);
         }
@@ -152,6 +163,20 @@ public sealed class ConfigWindow : Window, IDisposable
         {
             plugin.SetUseMotionStillnessLabels(useMotionStillnessLabels);
         }
+
+        var colorAccelerationBombCalls = configuration.ColorAccelerationBombCalls;
+        if (ImGui.Checkbox("Color MOVE/MOTION green and STOP/STILLNESS red", ref colorAccelerationBombCalls))
+        {
+            plugin.SetColorAccelerationBombCalls(colorAccelerationBombCalls);
+        }
+
+        var showP4ReminderChecklist = configuration.ShowP4ReminderChecklist;
+        if (ImGui.Checkbox("Show P4 reminder checklist", ref showP4ReminderChecklist))
+        {
+            plugin.SetShowP4ReminderChecklist(showP4ReminderChecklist);
+        }
+
+        ImGui.TextDisabled("Shows your short/long bomb, stack/spread, and gaze assignments without timers.");
 
         var showP4Vertically = configuration.ShowP4Vertically;
         if (ImGui.Checkbox("Show P4 vertically", ref showP4Vertically))
