@@ -80,11 +80,16 @@ internal sealed class P4SessionLogTracker
         var log = current ??= new CurrentLog();
         Merge(ref log.Lightning1, state.LightningStored);
         Merge(ref log.Ice1, state.IceStored);
-        Merge(ref log.Lightning2, state.LightningRelease);
-        Merge(ref log.Ice2, state.IceRelease);
+        var releaseInvalidated = false;
+        MergeRelease(ref log.Lightning2, state.LightningRelease, state.IsManaReleaseActive, ref releaseInvalidated);
+        MergeRelease(ref log.Ice2, state.IceRelease, state.IsManaReleaseActive, ref releaseInvalidated);
         if (state.SafeZone != ManaReleaseSafeZone.Unknown)
         {
             log.Result = state.SafeZone;
+        }
+        else if (releaseInvalidated)
+        {
+            log.Result = ManaReleaseSafeZone.Unknown;
         }
         log.HasManaData = true;
     }
@@ -105,6 +110,23 @@ internal sealed class P4SessionLogTracker
         if (target == RealityState.Unknown && incoming != RealityState.Unknown)
         {
             target = incoming;
+        }
+    }
+
+    private static void MergeRelease(
+        ref RealityState target,
+        RealityState incoming,
+        bool releaseActive,
+        ref bool invalidated)
+    {
+        if (incoming != RealityState.Unknown)
+        {
+            Merge(ref target, incoming);
+        }
+        else if (releaseActive && target != RealityState.Unknown)
+        {
+            target = RealityState.Unknown;
+            invalidated = true;
         }
     }
 

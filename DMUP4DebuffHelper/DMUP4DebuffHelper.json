@@ -5,7 +5,7 @@
   "DownloadCount": 0,
   "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
   "Description": "Shows configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
-  "Changelog": "Corrects the P4 preview Stack timing examples: inferred Stack is Short at 19.1 seconds, while fake Forked Lightning is Long at 44.3 seconds for the checklist preview.",
+  "Changelog": "Fixes Mana Release tracking by reading Ice 2 and Lightning 2 from target icons 675-678, resolving the safe region from both stored realities, and keeping incomplete or conflicting observations Unknown.",
   "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
   "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
   "ApplicableVersion": "any",

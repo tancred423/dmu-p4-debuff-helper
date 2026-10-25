@@ -208,7 +208,7 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetEnableExperimentalManaReleaseTracking(enableManaReleaseTracking);
         }
 
-        ImGui.TextDisabled("Uses cast patterns and Kefka lock-on VFX. Validate it with diagnostics before relying on it.");
+        ImGui.TextDisabled("Uses cast patterns and Mana Release target icons. Validate it with diagnostics before relying on it.");
         ImGui.BeginDisabled(!configuration.EnableExperimentalManaReleaseTracking);
         var enableManaReleaseDiagnostics = configuration.EnableManaReleaseDiagnostics;
         if (ImGui.Checkbox("Enable Mana Release diagnostics", ref enableManaReleaseDiagnostics))

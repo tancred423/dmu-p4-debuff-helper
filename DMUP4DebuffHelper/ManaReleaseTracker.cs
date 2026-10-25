@@ -1,10 +1,11 @@
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Hooking;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
+using FFXIVClientStructs.FFXIV.Client.Network;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 
 namespace DMUP4DebuffHelper;
 
@@ -20,18 +21,18 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     private const uint IceRealActionId = 47768;
     private const uint IceFakeFirstActionId = 47771;
     private const uint IceFakeSecondActionId = 47774;
-    private const string LightningVfx = "m0462trg_c03c.avfx";
-    private const string IceVfx = "m0462trg_c05c.avfx";
-    private const string VfxSignature = "40 53 55 56 57 48 81 EC ?? ?? ?? ?? 0F 29 B4 24 ?? ?? ?? ?? 48 8B 05 ?? ?? ?? ?? 48 33 C4 48 89 84 24 ?? ?? ?? ?? 0F B6 AC 24 ?? ?? ?? ?? 0F 28 F3 49 8B F8";
-
-    private delegate nint ActorVfxCreateDelegate(byte* path, nint targetAddress, nint a3, float a4, byte a5, ushort a6, byte a7);
+    private const uint TargetIconCategory = 34;
+    private const uint IceFakeTargetIconId = 675;
+    private const uint IceRealTargetIconId = 676;
+    private const uint LightningFakeTargetIconId = 677;
+    private const uint LightningRealTargetIconId = 678;
 
     private readonly Plugin plugin;
-    private readonly ConcurrentQueue<VfxObservation> vfxObservations = new();
+    private readonly ConcurrentQueue<TargetIconObservation> targetIconObservations = new();
     private readonly ConcurrentQueue<string> deferredErrors = new();
     private readonly List<ManaReleaseDiagnosticEntry> diagnostics = [];
     private readonly HashSet<string> activeRelevantCasts = new(StringComparer.Ordinal);
-    private Hook<ActorVfxCreateDelegate>? vfxHook;
+    private Hook<PacketDispatcher.Delegates.HandleActorControlPacket>? actorControlHook;
     private bool isEnabled;
     private bool runtimeDisabled;
     private bool warnedRuntimeFailure;
@@ -40,12 +41,12 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     private RealityState lightningStored;
     private RealityState iceStored;
     private bool releaseActive;
-    private bool releaseLightningFake;
-    private bool releaseIceFake;
-    private bool releaseVfxObserved;
+    private RealityState lightningRelease;
+    private RealityState iceRelease;
+    private bool lightningReleaseConflicted;
+    private bool iceReleaseConflicted;
     private bool releaseResolved;
     private bool manaChargeObserved;
-    private nint releaseKefkaAddress;
     private ManaReleaseSafeZone safeZone;
 
     public ManaReleaseTracker(Plugin plugin) => this.plugin = plugin;
@@ -66,8 +67,8 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             armed,
             lightningStored,
             iceStored,
-            releaseResolved ? (releaseLightningFake ? RealityState.Fake : RealityState.Real) : RealityState.Unknown,
-            releaseResolved ? (releaseIceFake ? RealityState.Fake : RealityState.Real) : RealityState.Unknown,
+            lightningRelease,
+            iceRelease,
             releaseActive,
             safeZone)
         : null;
@@ -84,17 +85,18 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
 
         isEnabled = true;
-
-        if (vfxHook is not null || runtimeDisabled)
+        if (actorControlHook is not null || runtimeDisabled)
         {
             return;
         }
 
         try
         {
-            vfxHook = Plugin.GameInteropProvider.HookFromSignature<ActorVfxCreateDelegate>(VfxSignature, OnActorVfxCreate);
-            vfxHook.Enable();
-            Record("VFX hook initialized.");
+            actorControlHook = Plugin.GameInteropProvider.HookFromAddress<PacketDispatcher.Delegates.HandleActorControlPacket>(
+                PacketDispatcher.MemberFunctionPointers.HandleActorControlPacket,
+                OnHandleActorControlPacket);
+            actorControlHook.Enable();
+            Record("Target-icon hook initialized.");
         }
         catch (Exception ex)
         {
@@ -108,7 +110,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         // Plugin only invokes this while the feature, P4 tracking, and DMU are all active.
         try
         {
-            DrainObservations();
             if (runtimeDisabled)
             {
                 return;
@@ -116,6 +117,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
 
             var casters = CaptureCastingActors(out var kefka);
             var actionIds = casters.Select(caster => caster.ActionId).ToList();
+            var manaReleaseCasting = kefka is not null && kefka.Value.ActionId == ManaReleaseActionId;
             RecordRelevantCasts(casters);
 
             var manaChargeCasting = actionIds.Contains(ManaChargeActionId);
@@ -125,31 +127,38 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             }
             manaChargeObserved = manaChargeCasting;
 
+            if (armed)
+            {
+                CaptureStoredReality(actionIds);
+                PublishLogState();
+                if (manaReleaseCasting && !releaseActive && kefka is { } releaseKefka)
+                {
+                    BeginRelease(releaseKefka);
+                }
+            }
+
+            // Detect the cast before consuming observations so icons received on the
+            // cast-start frame are attributed to this Mana Release.
+            DrainObservations(releaseActive && manaReleaseCasting);
             if (!armed)
             {
                 return;
             }
 
-            CaptureStoredReality(actionIds);
-            PublishLogState();
-            if (kefka is not null && kefka.Value.ActionId == ManaReleaseActionId && !releaseActive)
-            {
-                BeginRelease(kefka.Value);
-            }
-
             if (releaseActive)
             {
-                if (releaseVfxObserved && !releaseResolved)
+                if (HasCompleteRealityData() && !releaseResolved)
                 {
                     ResolveRelease();
                 }
 
-                if (kefka is null || kefka.Value.ActionId != ManaReleaseActionId)
+                if (!manaReleaseCasting)
                 {
-                    if (!releaseVfxObserved)
+                    if (!releaseResolved)
                     {
                         safeZone = ManaReleaseSafeZone.Unknown;
-                        Record("Mana Release resolved as Unknown: no Kefka lock-on VFX observed.");
+                        Record($"Mana Release resolved as Unknown: {DescribeIncompleteRealityData()}.");
+                        PublishLogState();
                     }
 
                     Reset("Mana Release ended");
@@ -174,14 +183,15 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         lightningStored = RealityState.Unknown;
         iceStored = RealityState.Unknown;
         releaseActive = false;
-        releaseLightningFake = false;
-        releaseIceFake = false;
-        releaseVfxObserved = false;
+        lightningRelease = RealityState.Unknown;
+        iceRelease = RealityState.Unknown;
+        lightningReleaseConflicted = false;
+        iceReleaseConflicted = false;
         releaseResolved = false;
         manaChargeObserved = false;
-        releaseKefkaAddress = nint.Zero;
         safeZone = ManaReleaseSafeZone.Unknown;
-        while (vfxObservations.TryDequeue(out _)) { }
+        while (targetIconObservations.TryDequeue(out _)) { }
+        while (deferredErrors.TryDequeue(out _)) { }
         activeRelevantCasts.Clear();
         Record($"Reset: {reason}.");
     }
@@ -200,15 +210,16 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     {
         try
         {
-            vfxHook?.Dispose();
+            actorControlHook?.Dispose();
         }
         catch (Exception ex)
         {
-            FailRuntime("Mana Release VFX hook disposal failed.", ex);
+            Record($"Error: Mana Release target-icon hook disposal failed ({ex.GetType().Name}).");
+            Plugin.Log.Warning(ex, "Mana Release target-icon hook disposal failed.");
         }
         finally
         {
-            vfxHook = null;
+            actorControlHook = null;
             isEnabled = false;
             runtimeDisabled = false;
             warnedRuntimeFailure = false;
@@ -268,20 +279,16 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
                     continue;
                 }
 
-                var snapshot = new CastingActor(
-                    actor.EntityId,
-                    actor.BaseId,
-                    actor.CastActionId,
-                    actor.Address);
+                var snapshot = new CastingActor(actor.EntityId, actor.BaseId, actor.CastActionId);
                 casters.Add(snapshot);
                 if (snapshot.BaseId == KefkaDataId)
                 {
                     kefka = snapshot;
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                Record($"Skipped invalid casting actor: {ex.GetType().Name}.");
+                // Ignore
             }
         }
 
@@ -321,64 +328,126 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     private void BeginRelease(CastingActor kefka)
     {
         releaseActive = true;
+        lightningRelease = RealityState.Unknown;
+        iceRelease = RealityState.Unknown;
+        lightningReleaseConflicted = false;
+        iceReleaseConflicted = false;
+        releaseResolved = false;
         safeZone = ManaReleaseSafeZone.Unknown;
-        releaseKefkaAddress = kefka.Address;
         Record($"Mana Release (47781) detected from actor {kefka.EntityId:X8}.");
         PublishLogState();
     }
 
-    private void DrainObservations()
+    private void DrainObservations(bool acceptTargetIcons)
     {
         while (deferredErrors.TryDequeue(out var error))
         {
             Record(error);
         }
 
-        while (vfxObservations.TryDequeue(out var observation))
+        var changed = false;
+        while (targetIconObservations.TryDequeue(out var observation))
         {
-            if (!releaseActive || observation.TargetAddress != releaseKefkaAddress)
+            if (!acceptTargetIcons)
             {
                 continue;
             }
 
-            releaseVfxObserved = true;
-            if (observation.IsLightning)
+            changed |= observation.IconId switch
             {
-                releaseLightningFake = true;
-            }
-            else if (observation.IsIce)
-            {
-                releaseIceFake = true;
-            }
-
-            if (plugin.Configuration.EnableManaReleaseDiagnostics)
-            {
-                Record($"Mana Release lock-on VFX: {observation.Path}.");
-            }
+                IceFakeTargetIconId => CaptureReleaseReality(ref iceRelease, ref iceReleaseConflicted, RealityState.Fake, "Ice 2", observation),
+                IceRealTargetIconId => CaptureReleaseReality(ref iceRelease, ref iceReleaseConflicted, RealityState.Real, "Ice 2", observation),
+                LightningFakeTargetIconId => CaptureReleaseReality(ref lightningRelease, ref lightningReleaseConflicted, RealityState.Fake, "Lightning 2", observation),
+                LightningRealTargetIconId => CaptureReleaseReality(ref lightningRelease, ref lightningReleaseConflicted, RealityState.Real, "Lightning 2", observation),
+                _ => false,
+            };
         }
+
+        if (changed)
+        {
+            PublishLogState();
+        }
+    }
+
+    private bool CaptureReleaseReality(
+        ref RealityState current,
+        ref bool conflicted,
+        RealityState incoming,
+        string label,
+        TargetIconObservation observation)
+    {
+        if (conflicted || current == incoming)
+        {
+            return false;
+        }
+
+        if (current == RealityState.Unknown)
+        {
+            current = incoming;
+            Record($"{label} captured: {incoming} (target icon {observation.IconId} on actor {observation.TargetEntityId:X8}).");
+            return true;
+        }
+
+        var previous = current;
+        current = RealityState.Unknown;
+        conflicted = true;
+        releaseResolved = false;
+        safeZone = ManaReleaseSafeZone.Unknown;
+        Record($"{label} target-icon conflict: observed both {previous} and {incoming}; result will remain Unknown.");
+        return true;
+    }
+
+    private bool HasCompleteRealityData() =>
+        lightningStored != RealityState.Unknown && iceStored != RealityState.Unknown &&
+        !lightningReleaseConflicted && !iceReleaseConflicted &&
+        lightningRelease != RealityState.Unknown && iceRelease != RealityState.Unknown;
+
+    private string DescribeIncompleteRealityData()
+    {
+        var issues = new List<string>();
+        if (lightningStored == RealityState.Unknown)
+        {
+            issues.Add("Lightning 1 cast data missing");
+        }
+        if (iceStored == RealityState.Unknown)
+        {
+            issues.Add("Ice 1 cast data missing");
+        }
+        if (lightningReleaseConflicted)
+        {
+            issues.Add("Lightning 2 target icons conflicted");
+        }
+        else if (lightningRelease == RealityState.Unknown)
+        {
+            issues.Add("Lightning 2 target icon missing");
+        }
+        if (iceReleaseConflicted)
+        {
+            issues.Add("Ice 2 target icons conflicted");
+        }
+        else if (iceRelease == RealityState.Unknown)
+        {
+            issues.Add("Ice 2 target icon missing");
+        }
+
+        return issues.Count > 0 ? string.Join("; ", issues) : "release data incomplete";
     }
 
     private void ResolveRelease()
     {
         releaseResolved = true;
-        if (lightningStored == RealityState.Unknown || iceStored == RealityState.Unknown)
-        {
-            safeZone = ManaReleaseSafeZone.Unknown;
-            Record("Mana Release resolved as Unknown: stored data missing.");
-            PublishLogState();
-            return;
-        }
-
-        var finalLightningFake = (lightningStored == RealityState.Fake) ^ releaseLightningFake;
-        var finalIceFake = (iceStored == RealityState.Fake) ^ releaseIceFake;
-        safeZone = (finalLightningFake, finalIceFake) switch
+        var lightningSafe = lightningStored != lightningRelease;
+        var iceSafe = iceStored != iceRelease;
+        safeZone = (lightningSafe, iceSafe) switch
         {
             (true, false) => ManaReleaseSafeZone.Lightning,
             (false, true) => ManaReleaseSafeZone.Ice,
             (true, true) => ManaReleaseSafeZone.Both,
             _ => ManaReleaseSafeZone.None,
         };
-        Record($"Mana Release resolved: Lightning fake={finalLightningFake}, Ice fake={finalIceFake}, safe={safeZone}.");
+        Record(
+            $"Mana Release resolved: Lightning 1={lightningStored}, Lightning 2={lightningRelease}, " +
+            $"Ice 1={iceStored}, Ice 2={iceRelease}, safe={safeZone}.");
         PublishLogState();
     }
 
@@ -390,46 +459,55 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
     }
 
-    private nint OnActorVfxCreate(byte* path, nint targetAddress, nint a3, float a4, byte a5, ushort a6, byte a7)
+    private void OnHandleActorControlPacket(
+        uint entityId,
+        uint category,
+        uint arg1,
+        uint arg2,
+        uint arg3,
+        uint arg4,
+        uint arg5,
+        uint arg6,
+        uint arg7,
+        uint arg8,
+        GameObjectId targetId,
+        bool isRecorded)
     {
         // Keep the hook instance alive across the detour so teardown cannot cause a second
         // lookup or skip the original invocation.
-        var hook = vfxHook;
+        var hook = actorControlHook;
         try
         {
-            if (releaseActive && targetAddress == releaseKefkaAddress && path is not null)
+            if (category == TargetIconCategory && IsManaReleaseTargetIcon(arg1))
             {
-                var value = Marshal.PtrToStringAnsi((nint)path, 256) ?? string.Empty;
-                var isLightning = value.EndsWith(LightningVfx, StringComparison.OrdinalIgnoreCase);
-                var isIce = value.EndsWith(IceVfx, StringComparison.OrdinalIgnoreCase);
-                if (value.Contains("/lockon/", StringComparison.OrdinalIgnoreCase))
-                {
-                    vfxObservations.Enqueue(new VfxObservation(targetAddress, value, isLightning, isIce));
-                }
+                targetIconObservations.Enqueue(new TargetIconObservation(entityId, arg1));
             }
         }
         catch (Exception ex)
         {
-            deferredErrors.Enqueue($"VFX observation error: {ex.GetType().Name}.");
+            deferredErrors.Enqueue($"Target-icon observation error: {ex.GetType().Name}.");
         }
 
         // This function must always call the original exactly once.
-        return hook!.Original(path, targetAddress, a3, a4, a5, a6, a7);
+        hook!.Original(entityId, category, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, targetId, isRecorded);
     }
+
+    private static bool IsManaReleaseTargetIcon(uint iconId) => iconId is
+        IceFakeTargetIconId or IceRealTargetIconId or LightningFakeTargetIconId or LightningRealTargetIconId;
 
     private void FailRuntime(string message, Exception ex)
     {
         runtimeDisabled = true;
         try
         {
-            vfxHook?.Dispose();
+            actorControlHook?.Dispose();
         }
         catch
         {
             // A failed hook teardown must never escape into Dalamud.
         }
 
-        vfxHook = null;
+        actorControlHook = null;
         Reset("Runtime failure");
         Record($"Error: {message} ({ex.GetType().Name}).");
         if (warnedRuntimeFailure)
@@ -458,7 +536,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
     }
 
-    private readonly record struct CastingActor(uint EntityId, uint BaseId, uint ActionId, nint Address);
+    private readonly record struct CastingActor(uint EntityId, uint BaseId, uint ActionId);
 
-    private sealed record VfxObservation(nint TargetAddress, string Path, bool IsLightning, bool IsIce);
+    private readonly record struct TargetIconObservation(uint TargetEntityId, uint IconId);
 }
