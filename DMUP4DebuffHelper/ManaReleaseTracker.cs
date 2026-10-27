@@ -13,21 +13,10 @@ namespace DMUP4DebuffHelper;
 internal sealed unsafe class ManaReleaseTracker : IDisposable
 {
     private const uint KefkaDataId = 18475;
-    private const uint ManaChargeActionId = 47780;
-    private const uint ManaReleaseActionId = 47781;
-    private const uint LightningRealActionId = 47775;
-    private const uint LightningFakeFirstActionId = 47776;
-    private const uint LightningFakeSecondActionId = 47777;
-    private const uint IceRealActionId = 47768;
-    private const uint IceFakeFirstActionId = 47771;
-    private const uint IceFakeSecondActionId = 47774;
     private const uint TargetIconCategory = 34;
-    private const uint IceFakeTargetIconId = 675;
-    private const uint IceRealTargetIconId = 676;
-    private const uint LightningFakeTargetIconId = 677;
-    private const uint LightningRealTargetIconId = 678;
 
     private readonly Plugin plugin;
+    private readonly ManaReleaseStateMachine state;
     private readonly ConcurrentQueue<TargetIconObservation> targetIconObservations = new();
     private readonly ConcurrentQueue<string> deferredErrors = new();
     private readonly List<ManaReleaseDiagnosticEntry> diagnostics = [];
@@ -37,19 +26,17 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
     private bool runtimeDisabled;
     private bool warnedRuntimeFailure;
     private bool warnedUpdateFailure;
-    private bool armed;
-    private RealityState lightningStored;
-    private RealityState iceStored;
-    private bool releaseActive;
-    private RealityState lightningRelease;
-    private RealityState iceRelease;
-    private bool lightningReleaseConflicted;
-    private bool iceReleaseConflicted;
-    private bool releaseResolved;
     private bool manaChargeObserved;
-    private ManaReleaseSafeZone safeZone;
 
-    public ManaReleaseTracker(Plugin plugin) => this.plugin = plugin;
+    public ManaReleaseTracker(Plugin plugin) : this(plugin, TimeProvider.System)
+    {
+    }
+
+    internal ManaReleaseTracker(Plugin plugin, TimeProvider timeProvider)
+    {
+        this.plugin = plugin;
+        state = new ManaReleaseStateMachine(Record, timeProvider);
+    }
 
     public IReadOnlyList<ManaReleaseDiagnosticEntry> Diagnostics
     {
@@ -62,16 +49,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
     }
 
-    public ManaReleaseDisplayState? DisplayState => armed || releaseActive
-        ? new ManaReleaseDisplayState(
-            armed,
-            lightningStored,
-            iceStored,
-            lightningRelease,
-            iceRelease,
-            releaseActive,
-            safeZone)
-        : null;
+    public ManaReleaseDisplayState? DisplayState => state.DisplayState;
 
     public void Reconcile(bool shouldRun)
     {
@@ -117,52 +95,36 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
 
             var casters = CaptureCastingActors(out var kefka);
             var actionIds = casters.Select(caster => caster.ActionId).ToList();
-            var manaReleaseCasting = kefka is not null && kefka.Value.ActionId == ManaReleaseActionId;
+            var manaReleaseCasting = kefka is not null && kefka.Value.ActionId == ManaReleaseStateMachine.ManaReleaseActionId;
             RecordRelevantCasts(casters);
 
-            var manaChargeCasting = actionIds.Contains(ManaChargeActionId);
+            var manaChargeCasting = actionIds.Contains(ManaReleaseStateMachine.ManaChargeActionId);
             if (manaChargeCasting && !manaChargeObserved)
             {
-                Arm();
+                Reset("Mana Charge");
+                state.Arm();
             }
             manaChargeObserved = manaChargeCasting;
 
-            if (armed)
+            if (state.IsArmed)
             {
-                CaptureStoredReality(actionIds);
-                PublishLogState();
-                if (manaReleaseCasting && !releaseActive && kefka is { } releaseKefka)
+                state.CaptureStoredReality(actionIds);
+                if (manaReleaseCasting && kefka is { } releaseKefka)
                 {
-                    BeginRelease(releaseKefka);
+                    state.BeginRelease(releaseKefka.EntityId);
                 }
             }
 
             // Detect the cast before consuming observations so icons received on the
             // cast-start frame are attributed to this Mana Release.
-            DrainObservations(releaseActive && manaReleaseCasting);
-            if (!armed)
+            var displayHoldEnded = state.Advance(manaReleaseCasting);
+            DrainObservations();
+            displayHoldEnded |= state.Advance(manaReleaseCasting);
+            PublishLogState();
+
+            if (displayHoldEnded)
             {
-                return;
-            }
-
-            if (releaseActive)
-            {
-                if (HasCompleteRealityData() && !releaseResolved)
-                {
-                    ResolveRelease();
-                }
-
-                if (!manaReleaseCasting)
-                {
-                    if (!releaseResolved)
-                    {
-                        safeZone = ManaReleaseSafeZone.Unknown;
-                        Record($"Mana Release resolved as Unknown: {DescribeIncompleteRealityData()}.");
-                        PublishLogState();
-                    }
-
-                    Reset("Mana Release ended");
-                }
+                Reset("Mana Release display hold ended");
             }
         }
         catch (Exception ex)
@@ -179,17 +141,8 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
 
     public void Reset(string reason)
     {
-        armed = false;
-        lightningStored = RealityState.Unknown;
-        iceStored = RealityState.Unknown;
-        releaseActive = false;
-        lightningRelease = RealityState.Unknown;
-        iceRelease = RealityState.Unknown;
-        lightningReleaseConflicted = false;
-        iceReleaseConflicted = false;
-        releaseResolved = false;
+        state.Reset();
         manaChargeObserved = false;
-        safeZone = ManaReleaseSafeZone.Unknown;
         while (targetIconObservations.TryDequeue(out _)) { }
         while (deferredErrors.TryDequeue(out _)) { }
         activeRelevantCasts.Clear();
@@ -225,44 +178,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
             warnedRuntimeFailure = false;
             warnedUpdateFailure = false;
             Reset(reason);
-        }
-    }
-
-    private void Arm()
-    {
-        Reset("Mana Charge");
-        armed = true;
-        Record("Mana Charge (47780) detected; tracker armed.");
-    }
-
-    private void CaptureStoredReality(IReadOnlyCollection<uint> actions)
-    {
-        if (lightningStored == RealityState.Unknown)
-        {
-            if (actions.Count(id => id == LightningRealActionId) >= 2)
-            {
-                lightningStored = RealityState.Real;
-                Record("Lightning 1 captured: Real (47775 x2).");
-            }
-            else if (actions.Count(id => id == LightningFakeFirstActionId) >= 2 && actions.Count(id => id == LightningFakeSecondActionId) >= 2)
-            {
-                lightningStored = RealityState.Fake;
-                Record("Lightning 1 captured: Fake (47776/47777 x2).");
-            }
-        }
-
-        if (iceStored == RealityState.Unknown)
-        {
-            if (actions.Count(id => id == IceRealActionId) >= 2)
-            {
-                iceStored = RealityState.Real;
-                Record("Ice 1 captured: Real (47768 x2).");
-            }
-            else if (actions.Count(id => id == IceFakeFirstActionId) >= 2 && actions.Count(id => id == IceFakeSecondActionId) >= 2)
-            {
-                iceStored = RealityState.Fake;
-                Record("Ice 1 captured: Fake (47771/47774 x2).");
-            }
         }
     }
 
@@ -306,9 +221,9 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         foreach (var caster in casters)
         {
             if (caster.ActionId is not (
-                ManaChargeActionId or ManaReleaseActionId or
-                LightningRealActionId or LightningFakeFirstActionId or LightningFakeSecondActionId or
-                IceRealActionId or IceFakeFirstActionId or IceFakeSecondActionId))
+                ManaReleaseStateMachine.ManaChargeActionId or ManaReleaseStateMachine.ManaReleaseActionId or
+                ManaReleaseStateMachine.LightningRealActionId or ManaReleaseStateMachine.LightningFakeFirstActionId or ManaReleaseStateMachine.LightningFakeSecondActionId or
+                ManaReleaseStateMachine.IceRealActionId or ManaReleaseStateMachine.IceFakeFirstActionId or ManaReleaseStateMachine.IceFakeSecondActionId))
             {
                 continue;
             }
@@ -325,130 +240,25 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         activeRelevantCasts.UnionWith(current);
     }
 
-    private void BeginRelease(CastingActor kefka)
-    {
-        releaseActive = true;
-        lightningRelease = RealityState.Unknown;
-        iceRelease = RealityState.Unknown;
-        lightningReleaseConflicted = false;
-        iceReleaseConflicted = false;
-        releaseResolved = false;
-        safeZone = ManaReleaseSafeZone.Unknown;
-        Record($"Mana Release (47781) detected from actor {kefka.EntityId:X8}.");
-        PublishLogState();
-    }
-
-    private void DrainObservations(bool acceptTargetIcons)
+    private void DrainObservations()
     {
         while (deferredErrors.TryDequeue(out var error))
         {
             Record(error);
         }
 
-        var changed = false;
         while (targetIconObservations.TryDequeue(out var observation))
         {
-            if (!acceptTargetIcons)
+            // Icons outside a Mana Release are intentionally discarded. During an active
+            // release, the state machine records both recognized and unknown IDs so its
+            // diagnostics can distinguish a late packet from a bad ID mapping.
+            if (!state.IsReleaseActive)
             {
                 continue;
             }
 
-            changed |= observation.IconId switch
-            {
-                IceFakeTargetIconId => CaptureReleaseReality(ref iceRelease, ref iceReleaseConflicted, RealityState.Fake, "Ice 2", observation),
-                IceRealTargetIconId => CaptureReleaseReality(ref iceRelease, ref iceReleaseConflicted, RealityState.Real, "Ice 2", observation),
-                LightningFakeTargetIconId => CaptureReleaseReality(ref lightningRelease, ref lightningReleaseConflicted, RealityState.Fake, "Lightning 2", observation),
-                LightningRealTargetIconId => CaptureReleaseReality(ref lightningRelease, ref lightningReleaseConflicted, RealityState.Real, "Lightning 2", observation),
-                _ => false,
-            };
+            state.ObserveTargetIcon(observation.IconId, observation.TargetEntityId);
         }
-
-        if (changed)
-        {
-            PublishLogState();
-        }
-    }
-
-    private bool CaptureReleaseReality(
-        ref RealityState current,
-        ref bool conflicted,
-        RealityState incoming,
-        string label,
-        TargetIconObservation observation)
-    {
-        if (conflicted || current == incoming)
-        {
-            return false;
-        }
-
-        if (current == RealityState.Unknown)
-        {
-            current = incoming;
-            Record($"{label} captured: {incoming} (target icon {observation.IconId} on actor {observation.TargetEntityId:X8}).");
-            return true;
-        }
-
-        var previous = current;
-        current = RealityState.Unknown;
-        conflicted = true;
-        releaseResolved = false;
-        safeZone = ManaReleaseSafeZone.Unknown;
-        Record($"{label} target-icon conflict: observed both {previous} and {incoming}; result will remain Unknown.");
-        return true;
-    }
-
-    private bool HasCompleteRealityData() =>
-        lightningStored != RealityState.Unknown && iceStored != RealityState.Unknown &&
-        !lightningReleaseConflicted && !iceReleaseConflicted &&
-        lightningRelease != RealityState.Unknown && iceRelease != RealityState.Unknown;
-
-    private string DescribeIncompleteRealityData()
-    {
-        var issues = new List<string>();
-        if (lightningStored == RealityState.Unknown)
-        {
-            issues.Add("Lightning 1 cast data missing");
-        }
-        if (iceStored == RealityState.Unknown)
-        {
-            issues.Add("Ice 1 cast data missing");
-        }
-        if (lightningReleaseConflicted)
-        {
-            issues.Add("Lightning 2 target icons conflicted");
-        }
-        else if (lightningRelease == RealityState.Unknown)
-        {
-            issues.Add("Lightning 2 target icon missing");
-        }
-        if (iceReleaseConflicted)
-        {
-            issues.Add("Ice 2 target icons conflicted");
-        }
-        else if (iceRelease == RealityState.Unknown)
-        {
-            issues.Add("Ice 2 target icon missing");
-        }
-
-        return issues.Count > 0 ? string.Join("; ", issues) : "release data incomplete";
-    }
-
-    private void ResolveRelease()
-    {
-        releaseResolved = true;
-        var lightningSafe = lightningStored != lightningRelease;
-        var iceSafe = iceStored != iceRelease;
-        safeZone = (lightningSafe, iceSafe) switch
-        {
-            (true, false) => ManaReleaseSafeZone.Lightning,
-            (false, true) => ManaReleaseSafeZone.Ice,
-            (true, true) => ManaReleaseSafeZone.Both,
-            _ => ManaReleaseSafeZone.None,
-        };
-        Record(
-            $"Mana Release resolved: Lightning 1={lightningStored}, Lightning 2={lightningRelease}, " +
-            $"Ice 1={iceStored}, Ice 2={iceRelease}, safe={safeZone}.");
-        PublishLogState();
     }
 
     private void PublishLogState()
@@ -478,7 +288,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         var hook = actorControlHook;
         try
         {
-            if (category == TargetIconCategory && IsManaReleaseTargetIcon(arg1))
+            if (category == TargetIconCategory)
             {
                 targetIconObservations.Enqueue(new TargetIconObservation(entityId, arg1));
             }
@@ -491,9 +301,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         // This function must always call the original exactly once.
         hook!.Original(entityId, category, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, targetId, isRecorded);
     }
-
-    private static bool IsManaReleaseTargetIcon(uint iconId) => iconId is
-        IceFakeTargetIconId or IceRealTargetIconId or LightningFakeTargetIconId or LightningRealTargetIconId;
 
     private void FailRuntime(string message, Exception ex)
     {
