@@ -662,6 +662,12 @@ public sealed class Plugin : IDalamudPlugin
         ActionEffectHandler.TargetEffects* effects,
         GameObjectId* targetEntityIds)
     {
+        if (header is not null && Configuration.EnableP4Tracking &&
+            Configuration.EnableExperimentalManaReleaseTracking && ClientState.TerritoryType == DmuTerritoryId)
+        {
+            manaReleaseTracker.QueueActionEffect(casterEntityId, header->ActionId);
+        }
+
         if (Configuration.EnableP3Tracking &&
             (!Configuration.EnableP4Tracking || !p4SeenThisPull) &&
             ClientState.TerritoryType == DmuTerritoryId)
@@ -831,10 +837,7 @@ public sealed class Plugin : IDalamudPlugin
         statusTimerAnchors.Clear();
         activeBossTellKeysLastFrame.Clear();
         ClearInferredStackState();
-        if (manaReleaseTracker.DisplayState is not null)
-        {
-            manaReleaseTracker.Reset(snapshotReason);
-        }
+        manaReleaseTracker.Reset(snapshotReason);
         ResetPullState();
         p4SeenThisPull = false;
         UpdateDisplayMode();
@@ -860,10 +863,7 @@ public sealed class Plugin : IDalamudPlugin
         ClearGazeTimingBuckets();
         statusTimerAnchors.Clear();
         ClearInferredStackState();
-        if (manaReleaseTracker.DisplayState is not null)
-        {
-            manaReleaseTracker.Reset(snapshotReason);
-        }
+        manaReleaseTracker.Reset(snapshotReason);
         ResetPullState();
         p4SeenThisPull = false;
     }
@@ -1542,6 +1542,7 @@ public sealed class Plugin : IDalamudPlugin
         p3LimitCutTracker.Reset();
         CaptureCurrentPullSnapshot("Wipe/reset detected");
         p4SessionLogTracker.Complete("Wipe/reset detected", CurrentPullElapsedSeconds);
+        manaReleaseTracker.Reset("Wipe/reset detected");
         currentEntries.Clear();
         currentMembers.Clear();
         currentAssignments.Clear();

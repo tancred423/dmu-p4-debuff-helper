@@ -9,33 +9,34 @@ using System.Linq;
 
 namespace DMUP4DebuffHelper;
 
-/// <summary>Opt-in, defensive tracker for Kefka's stored Mana Release mechanics.</summary>
+/// <summary>Opt-in adapter for Kefka's marker/status-based Mana tracker.</summary>
 internal sealed unsafe class ManaReleaseTracker : IDisposable
 {
     private const uint KefkaDataId = 18475;
     private const uint TargetIconCategory = 34;
 
     private readonly Plugin plugin;
+    private readonly TimeProvider clock;
     private readonly ManaReleaseStateMachine state;
-    private readonly ConcurrentQueue<TargetIconObservation> targetIconObservations = new();
     private readonly ConcurrentQueue<string> deferredErrors = new();
     private readonly List<ManaReleaseDiagnosticEntry> diagnostics = [];
     private readonly HashSet<string> activeRelevantCasts = new(StringComparer.Ordinal);
     private Hook<PacketDispatcher.Delegates.HandleActorControlPacket>? actorControlHook;
-    private bool isEnabled;
+    private volatile bool isEnabled;
     private bool runtimeDisabled;
     private bool warnedRuntimeFailure;
     private bool warnedUpdateFailure;
-    private bool manaChargeObserved;
+    private string lastKefkaStatuses = string.Empty;
+    private long? lastChargeCastAt;
 
-    public ManaReleaseTracker(Plugin plugin) : this(plugin, TimeProvider.System)
-    {
-    }
+    public ManaReleaseTracker(Plugin plugin) : this(plugin, TimeProvider.System) { }
 
     internal ManaReleaseTracker(Plugin plugin, TimeProvider timeProvider)
     {
         this.plugin = plugin;
+        clock = timeProvider;
         state = new ManaReleaseStateMachine(Record, timeProvider);
+        state.StateChanged += plugin.ObserveManaReleaseForLog;
     }
 
     public IReadOnlyList<ManaReleaseDiagnosticEntry> Diagnostics
@@ -43,9 +44,7 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         get
         {
             lock (diagnostics)
-            {
                 return diagnostics.ToList();
-            }
         }
     }
 
@@ -56,76 +55,81 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         if (!shouldRun)
         {
             if (isEnabled)
-            {
                 Disable("Feature unavailable");
-            }
             return;
         }
-
         isEnabled = true;
         if (actorControlHook is not null || runtimeDisabled)
-        {
             return;
-        }
 
         try
         {
             actorControlHook = Plugin.GameInteropProvider.HookFromAddress<PacketDispatcher.Delegates.HandleActorControlPacket>(
-                PacketDispatcher.MemberFunctionPointers.HandleActorControlPacket,
-                OnHandleActorControlPacket);
+                PacketDispatcher.MemberFunctionPointers.HandleActorControlPacket, OnHandleActorControlPacket);
             actorControlHook.Enable();
-            Record("Target-icon hook initialized.");
+            Record("Target-icon hook initialized; Kefka markers are buffered before Mana Release.");
         }
         catch (Exception ex)
         {
-            runtimeDisabled = true;
-            FailRuntime("Mana Release tracker could not initialize; calls will remain Unknown until it is re-enabled.", ex);
+            FailRuntime("Mana Release tracker could not initialize; re-enable the feature to retry.", ex);
         }
     }
 
     public void Update()
     {
-        // Plugin only invokes this while the feature, P4 tracking, and DMU are all active.
         try
         {
-            if (runtimeDisabled)
-            {
+            if (!isEnabled || runtimeDisabled)
                 return;
-            }
 
-            var casters = CaptureCastingActors(out var kefka);
-            var actionIds = casters.Select(caster => caster.ActionId).ToList();
-            var manaReleaseCasting = kefka is not null && kefka.Value.ActionId == ManaReleaseStateMachine.ManaReleaseActionId;
-            RecordRelevantCasts(casters);
-
-            var manaChargeCasting = actionIds.Contains(ManaReleaseStateMachine.ManaChargeActionId);
-            if (manaChargeCasting && !manaChargeObserved)
+            ManaKefkaSnapshot? kefka = null;
+            var currentCasts = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var gameObject in Plugin.ObjectTable)
             {
-                Reset("Mana Charge");
-                state.Arm();
-            }
-            manaChargeObserved = manaChargeCasting;
-
-            if (state.IsArmed)
-            {
-                state.CaptureStoredReality(actionIds);
-                if (manaReleaseCasting && kefka is { } releaseKefka)
+                try
                 {
-                    state.BeginRelease(releaseKefka.EntityId);
+                    if (gameObject is not IBattleChara actor)
+                        continue;
+                    // Charged statuses and actor identity must be read even between casts.
+                    if (actor.BaseId == KefkaDataId)
+                    {
+                        kefka = new(actor.EntityId, actor.IsCasting ? actor.CastActionId : 0,
+                            actor.StatusList.Where(status => status.StatusId != 0).Select(status => status.StatusId).ToArray());
+                    }
+                    if (plugin.Configuration.EnableManaReleaseDiagnostics && actor.IsCasting &&
+                        actor.CastActionId is 47780 or 47781 or 47775 or 47776 or 47777 or 47768 or 47771 or 47774)
+                    {
+                        var key = $"{actor.EntityId:X8}:{actor.CastActionId}";
+                        currentCasts.Add(key);
+                        if (!activeRelevantCasts.Contains(key))
+                            Record($"Relevant cast {actor.CastActionId} from actor {actor.EntityId:X8} (diagnostic only).");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Record($"Skipped unavailable actor snapshot: {ex.GetType().Name}.");
                 }
             }
+            activeRelevantCasts.Clear();
+            activeRelevantCasts.UnionWith(currentCasts);
 
-            // Detect the cast before consuming observations so icons received on the
-            // cast-start frame are attributed to this Mana Release.
-            var displayHoldEnded = state.Advance(manaReleaseCasting);
-            DrainObservations();
-            displayHoldEnded |= state.Advance(manaReleaseCasting);
-            PublishLogState();
-
-            if (displayHoldEnded)
+            if (kefka is { } observed)
             {
-                Reset("Mana Release display hold ended");
+                var statuses = string.Join(",", observed.StatusIds.OrderBy(id => id));
+                var context = $"{observed.EntityId:X8}:{observed.CastActionId}:{statuses}";
+                if (observed.CastActionId == ManaReleaseStateMachine.ManaChargeActionId)
+                    lastChargeCastAt = clock.GetTimestamp();
+                if (context != lastKefkaStatuses &&
+                    (lastChargeCastAt is { } chargeAt && clock.GetElapsedTime(chargeAt).TotalSeconds <= 10 ||
+                     observed.StatusIds.Any(id => id is ManaReleaseStateMachine.IceChargedStatusId or ManaReleaseStateMachine.ThunderChargedStatusId)))
+                    Record($"Kefka {observed.EntityId:X8} charge transition: all observed status IDs=[{statuses}]. Ice Charged 1484 still requires live verification.");
+                lastKefkaStatuses = context;
             }
+
+            var hasGrandCross = Plugin.PartyList.Any(member => member.Statuses.Any(status => status.StatusId is >= 5543 and <= 5546));
+            while (deferredErrors.TryDequeue(out var error))
+                Record(error);
+            state.Update(kefka, hasGrandCross);
         }
         catch (Exception ex)
         {
@@ -139,28 +143,45 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
     }
 
+    // Called by Plugin's existing action-effect hook; this method never reads game objects.
+    public void QueueActionEffect(uint casterEntityId, uint actionId)
+    {
+        if (!isEnabled || actionId != ManaReleaseStateMachine.ManaReleaseActionId)
+            return;
+        try
+        {
+            state.Enqueue(state.CaptureObservation(ManaObservationKind.ActionEffect, casterEntityId, actionId));
+        }
+        catch (Exception ex)
+        {
+            deferredErrors.Enqueue($"Mana Release action-effect observation error: {ex.GetType().Name}.");
+        }
+    }
+
     public void Reset(string reason)
     {
-        state.Reset();
-        manaChargeObserved = false;
-        while (targetIconObservations.TryDequeue(out _)) { }
+        state.Reset(reason);
         while (deferredErrors.TryDequeue(out _)) { }
         activeRelevantCasts.Clear();
-        Record($"Reset: {reason}.");
+        lastKefkaStatuses = string.Empty;
+        lastChargeCastAt = null;
     }
 
     public void ClearDiagnostics()
     {
         lock (diagnostics)
-        {
             diagnostics.Clear();
-        }
     }
 
-    public void Dispose() => Disable("Plugin disposed");
+    public void Dispose()
+    {
+        Disable("Plugin disposed");
+        state.StateChanged -= plugin.ObserveManaReleaseForLog;
+    }
 
     private void Disable(string reason)
     {
+        isEnabled = false;
         try
         {
             actorControlHook?.Dispose();
@@ -173,7 +194,6 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         finally
         {
             actorControlHook = null;
-            isEnabled = false;
             runtimeDisabled = false;
             warnedRuntimeFailure = false;
             warnedUpdateFailure = false;
@@ -181,169 +201,51 @@ internal sealed unsafe class ManaReleaseTracker : IDisposable
         }
     }
 
-    private List<CastingActor> CaptureCastingActors(out CastingActor? kefka)
-    {
-        kefka = null;
-        var casters = new List<CastingActor>();
-        foreach (var gameObject in Plugin.ObjectTable)
-        {
-            try
-            {
-                if (gameObject is not IBattleChara actor || !actor.IsCasting)
-                {
-                    continue;
-                }
-
-                var snapshot = new CastingActor(actor.EntityId, actor.BaseId, actor.CastActionId);
-                casters.Add(snapshot);
-                if (snapshot.BaseId == KefkaDataId)
-                {
-                    kefka = snapshot;
-                }
-            }
-            catch (Exception)
-            {
-                // Ignore
-            }
-        }
-
-        return casters;
-    }
-
-    private void RecordRelevantCasts(IReadOnlyList<CastingActor> casters)
-    {
-        if (!plugin.Configuration.EnableManaReleaseDiagnostics)
-        {
-            return;
-        }
-
-        var current = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var caster in casters)
-        {
-            if (caster.ActionId is not (
-                ManaReleaseStateMachine.ManaChargeActionId or ManaReleaseStateMachine.ManaReleaseActionId or
-                ManaReleaseStateMachine.LightningRealActionId or ManaReleaseStateMachine.LightningFakeFirstActionId or ManaReleaseStateMachine.LightningFakeSecondActionId or
-                ManaReleaseStateMachine.IceRealActionId or ManaReleaseStateMachine.IceFakeFirstActionId or ManaReleaseStateMachine.IceFakeSecondActionId))
-            {
-                continue;
-            }
-
-            var key = $"{caster.EntityId:X8}:{caster.ActionId}";
-            current.Add(key);
-            if (!activeRelevantCasts.Contains(key))
-            {
-                Record($"Relevant cast {caster.ActionId} from actor {caster.EntityId:X8}.");
-            }
-        }
-
-        activeRelevantCasts.Clear();
-        activeRelevantCasts.UnionWith(current);
-    }
-
-    private void DrainObservations()
-    {
-        while (deferredErrors.TryDequeue(out var error))
-        {
-            Record(error);
-        }
-
-        while (targetIconObservations.TryDequeue(out var observation))
-        {
-            // Icons outside a Mana Release are intentionally discarded. During an active
-            // release, the state machine records both recognized and unknown IDs so its
-            // diagnostics can distinguish a late packet from a bad ID mapping.
-            if (!state.IsReleaseActive)
-            {
-                continue;
-            }
-
-            state.ObserveTargetIcon(observation.IconId, observation.TargetEntityId);
-        }
-    }
-
-    private void PublishLogState()
-    {
-        if (DisplayState is { } state)
-        {
-            plugin.ObserveManaReleaseForLog(state);
-        }
-    }
-
     private void OnHandleActorControlPacket(
-        uint entityId,
-        uint category,
-        uint arg1,
-        uint arg2,
-        uint arg3,
-        uint arg4,
-        uint arg5,
-        uint arg6,
-        uint arg7,
-        uint arg8,
-        GameObjectId targetId,
-        bool isRecorded)
+        uint entityId, uint category, uint arg1, uint arg2, uint arg3, uint arg4,
+        uint arg5, uint arg6, uint arg7, uint arg8, GameObjectId targetId, bool isRecorded)
     {
-        // Keep the hook instance alive across the detour so teardown cannot cause a second
-        // lookup or skip the original invocation.
         var hook = actorControlHook;
         try
         {
-            if (category == TargetIconCategory)
-            {
-                targetIconObservations.Enqueue(new TargetIconObservation(entityId, arg1));
-            }
+            if (isEnabled && category == TargetIconCategory)
+                state.Enqueue(state.CaptureObservation(ManaObservationKind.TargetIcon, entityId, arg1, arg2));
         }
         catch (Exception ex)
         {
             deferredErrors.Enqueue($"Target-icon observation error: {ex.GetType().Name}.");
         }
-
-        // This function must always call the original exactly once.
-        hook!.Original(entityId, category, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, targetId, isRecorded);
+        finally
+        {
+            // Always invoke the original once, even if observation collection fails.
+            hook!.Original(entityId, category, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, targetId, isRecorded);
+        }
     }
 
     private void FailRuntime(string message, Exception ex)
     {
         runtimeDisabled = true;
-        try
-        {
-            actorControlHook?.Dispose();
-        }
-        catch
-        {
-            // A failed hook teardown must never escape into Dalamud.
-        }
-
+        try { actorControlHook?.Dispose(); }
+        catch { /* Hook teardown must never escape into Dalamud. */ }
         actorControlHook = null;
         Reset("Runtime failure");
         Record($"Error: {message} ({ex.GetType().Name}).");
-        if (warnedRuntimeFailure)
+        if (!warnedRuntimeFailure)
         {
-            return;
+            warnedRuntimeFailure = true;
+            Plugin.Log.Warning(ex, message);
         }
-
-        warnedRuntimeFailure = true;
-        Plugin.Log.Warning(ex, message);
     }
 
     private void Record(string message)
     {
         if (!plugin.Configuration.EnableManaReleaseDiagnostics)
-        {
             return;
-        }
-
         lock (diagnostics)
         {
             diagnostics.Add(new ManaReleaseDiagnosticEntry(DateTime.UtcNow, message));
             if (diagnostics.Count > 500)
-            {
                 diagnostics.RemoveRange(0, diagnostics.Count - 500);
-            }
         }
     }
-
-    private readonly record struct CastingActor(uint EntityId, uint BaseId, uint ActionId);
-
-    private readonly record struct TargetIconObservation(uint TargetEntityId, uint IconId);
 }

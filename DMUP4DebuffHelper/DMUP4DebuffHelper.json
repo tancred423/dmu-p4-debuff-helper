@@ -5,7 +5,7 @@
   "DownloadCount": 0,
   "Punchline": "Track DMU P3 Black Hole and P4 debuffs.",
   "Description": "Shows configurable P3 Black Hole assignments and P4 debuff guidance for Dancing Mad Ultimate.",
-  "Changelog": "Fixes Mana Release target-icon timing: icons remain valid for 2 seconds after Mana Release, the callout remains visible for 5 seconds, and diagnostics now show unknown, duplicate, conflicting, and late target icons.",
+  "Changelog": "Adapts UMAD's Mana tracking: retains Kefka's pre-cast markers, banks Lightning/Ice from Charged statuses, combines release markers, and tracks completion through action effects. Fixes wipe resets and stale history; adds marker/status diagnostics. Ice Charged 1484 still requires live verification.",
   "RepoUrl": "https://github.com/tancred423/dmu-p4-debuff-helper",
   "IconUrl": "https://raw.githubusercontent.com/tancred423/dmu-p4-debuff-helper/refs/heads/main/assets/icon.png",
   "ApplicableVersion": "any",

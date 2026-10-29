@@ -16,5 +16,6 @@
   <ItemGroup>
     <Compile Include="../DMUP4DebuffHelper/ManaReleaseStateMachine.cs" Link="ManaReleaseStateMachine.cs" />
     <Compile Include="../DMUP4DebuffHelper/StatusModels.cs" Link="StatusModels.cs" />
+    <Compile Include="../DMUP4DebuffHelper/P4SessionLogTracker.cs" Link="P4SessionLogTracker.cs" />
   </ItemGroup>
 </Project>

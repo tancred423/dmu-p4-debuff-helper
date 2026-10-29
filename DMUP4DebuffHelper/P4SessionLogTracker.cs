@@ -69,7 +69,7 @@ internal sealed class P4SessionLogTracker
 
     public void ObserveMana(ManaReleaseDisplayState state)
     {
-        var hasState = state.LightningStored != RealityState.Unknown || state.IceStored != RealityState.Unknown ||
+        var hasState = state.IsManaReleaseActive || state.LightningStored != RealityState.Unknown || state.IceStored != RealityState.Unknown ||
             state.LightningRelease != RealityState.Unknown || state.IceRelease != RealityState.Unknown ||
             state.SafeZone != ManaReleaseSafeZone.Unknown;
         if (!hasState)
@@ -78,19 +78,13 @@ internal sealed class P4SessionLogTracker
         }
 
         var log = current ??= new CurrentLog();
-        Merge(ref log.Lightning1, state.LightningStored);
-        Merge(ref log.Ice1, state.IceStored);
-        var releaseInvalidated = false;
-        MergeRelease(ref log.Lightning2, state.LightningRelease, state.IsManaReleaseActive, ref releaseInvalidated);
-        MergeRelease(ref log.Ice2, state.IceRelease, state.IsManaReleaseActive, ref releaseInvalidated);
-        if (state.SafeZone != ManaReleaseSafeZone.Unknown)
-        {
-            log.Result = state.SafeZone;
-        }
-        else if (releaseInvalidated)
-        {
-            log.Result = ManaReleaseSafeZone.Unknown;
-        }
+        // Mana snapshots are authoritative, including Unknown after a conflict.
+        // Retaining only the first known value can preserve a stale safe-region call.
+        log.Lightning1 = state.LightningStored;
+        log.Ice1 = state.IceStored;
+        log.Lightning2 = state.LightningRelease;
+        log.Ice2 = state.IceRelease;
+        log.Result = state.SafeZone;
         log.HasManaData = true;
     }
 
@@ -103,31 +97,6 @@ internal sealed class P4SessionLogTracker
 
         completed.Add(Snapshot(current, reason, elapsed));
         current = null;
-    }
-
-    private static void Merge(ref RealityState target, RealityState incoming)
-    {
-        if (target == RealityState.Unknown && incoming != RealityState.Unknown)
-        {
-            target = incoming;
-        }
-    }
-
-    private static void MergeRelease(
-        ref RealityState target,
-        RealityState incoming,
-        bool releaseActive,
-        ref bool invalidated)
-    {
-        if (incoming != RealityState.Unknown)
-        {
-            Merge(ref target, incoming);
-        }
-        else if (releaseActive && target != RealityState.Unknown)
-        {
-            target = RealityState.Unknown;
-            invalidated = true;
-        }
     }
 
     private static P4LogPullSnapshot Snapshot(CurrentLog log, string reason, float elapsed) => new(

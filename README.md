@@ -11,7 +11,7 @@
 > * The preview now respects your config.
 > * Option to use "OUT/IN" wording instead of "Away/Towards" for Shriek facing direction.
 > * Gaze on you is also shown in active window now to remind you to go in. It will have the label `Go in` with Away/Toward or Out/In direction wording.
-> * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both". It waits quietly for data until P4 is active and does not interfere with P3.
+> * Opt-in experimental Mana Release tracker with optional in-game diagnostics and a safe-region panel. Tracks what first and second Lightning/Ice was in P4 and also gives you the callout "Stand in None/Lightning/Ice/Both".
 > * Optional vertical P4 layout: Active calls stack on the left, with Gazes and Mana Release on the right.
 > * Opt-in P4 reminder checklist above Active: shows your current short/long Bomb, Stack/Spread, and Gaze assignments without timers.
 > * Wound rows can be hidden from Active without disabling Flood destination guidance.

@@ -29,7 +29,8 @@
   - `5464` Beyond Death
 - [x] Added boss tell status tracking with `2056` params `1119`, `1120`, `1121`, and `1122`.
 - [x] Added real/fake-aware assignment text that preserves the captured state until the debuff falls off.
-- [x] Track Mana Release target icons `675`, `676`, `677`, and `678` for the second Ice/Lightning realities.
+- [x] Adapt UMAD's Mana marker/Charged-status association, including pre-cast markers, action-effect completion and reset generations.
+- [ ] Verify Ice Charged `1484` and Mana marker associations with a live diagnostic trace.
 - [x] Live helper shows the local player's P4 debuffs as compact icons with details on hover.
 - [x] Added Buff Summary tab with current/recorded pull groups, boss tell history, and captured debuff records.
 - [x] Added helper-window preview mode for inactive testing.

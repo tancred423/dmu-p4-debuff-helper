@@ -208,7 +208,8 @@ public sealed class ConfigWindow : Window, IDisposable
             plugin.SetEnableExperimentalManaReleaseTracking(enableManaReleaseTracking);
         }
 
-        ImGui.TextDisabled("Uses cast patterns and Mana Release target icons. Validate it with diagnostics before relying on it.");
+        ImGui.TextDisabled("Matches Kefka's target icons to Charged statuses, then combines them with his release markers.");
+        ImGui.TextDisabled("Validate with diagnostics; Ice Charged status 1484 still needs live confirmation.");
         ImGui.BeginDisabled(!configuration.EnableExperimentalManaReleaseTracking);
         var enableManaReleaseDiagnostics = configuration.EnableManaReleaseDiagnostics;
         if (ImGui.Checkbox("Enable Mana Release diagnostics", ref enableManaReleaseDiagnostics))
